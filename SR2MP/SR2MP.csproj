@@ -6,4 +6,10 @@
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
+    <ItemGroup>
+      <Reference Include="MelonLoader">
+        <HintPath>libraries\MelonLoader.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
 </Project>
