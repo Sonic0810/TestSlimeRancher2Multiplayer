@@ -206,8 +206,8 @@ public class Server
         {
             client.UpdateHeartbeat();
             
-            byte[] ackPacket = new byte[] { (byte)PacketType.HeartbeatAck };
-            Send(ackPacket, clientInfo);
+            byte[] acknowledgePacket = new byte[] { (byte)PacketType.HeartbeatAck };
+            Send(acknowledgePacket, clientInfo);
         
             SR2MP.Logger.LogSensitive($"Heartbeat received from {clientInfo}");
         }
