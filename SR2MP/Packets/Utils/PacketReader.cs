@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace SR2MP.Packets;
+namespace SR2MP.Packets.Utils;
 
 public class PacketReader : IDisposable
 {
@@ -20,6 +20,11 @@ public class PacketReader : IDisposable
     public float ReadSingle() => reader.ReadSingle();
     public string ReadString() => reader.ReadString();
     public bool ReadBoolean() => reader.ReadBoolean();
+    
+    public void Skip(int count)
+    {
+        stream.Position += count;
+    }
     
     public void Dispose()
     {

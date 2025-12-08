@@ -1,9 +1,6 @@
-using System;
-using System.IO;
 using System.Text;
 
-namespace SR2MP.Packets;
-
+namespace SR2MP.Packets.Utils;
 public class PacketWriter : IDisposable
 {
     private MemoryStream stream;
