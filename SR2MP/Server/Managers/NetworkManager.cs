@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace SR2MP.Managers;
+namespace SR2MP.Server.Managers;
 
 public class NetworkManager
 {

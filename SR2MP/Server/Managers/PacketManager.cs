@@ -2,7 +2,7 @@ using System.Net;
 using System.Reflection;
 using SR2MP.Packets.Utils;
 
-namespace SR2MP.Managers;
+namespace SR2MP.Server.Managers;
 
 public class PacketManager
 {

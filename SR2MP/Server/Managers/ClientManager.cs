@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Net;
-using SR2MP.Models;
+using SR2MP.Server.Models;
 
-namespace SR2MP.Managers;
+namespace SR2MP.Server.Managers;
 
 public class ClientManager
 {

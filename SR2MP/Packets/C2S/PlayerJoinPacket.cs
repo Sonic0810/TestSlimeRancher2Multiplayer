@@ -3,10 +3,11 @@ using SR2MP.Packets.Utils;
 namespace SR2MP.Packets.C2S;
 
 // We should make the PlayerId come from the endpoint of the sender, if possible
-public struct PlayerLeavePacket : IPacket
+
+public struct PlayerJoinPacket : IPacket
 {
-    public byte Type { get; set; }
-    public string PlayerId { get; set; }
+    private byte Type { get; set; }
+    private string PlayerId { get; set; }
 
     public readonly void Serialise(PacketWriter writer)
     {

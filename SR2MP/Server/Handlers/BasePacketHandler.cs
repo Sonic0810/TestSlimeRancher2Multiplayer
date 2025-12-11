@@ -1,9 +1,9 @@
 using System.Net;
-using SR2MP.Managers;
-using SR2MP.Models;
+using SR2MP.Server.Managers;
+using SR2MP.Server.Models;
 using SR2MP.Packets.Utils;
 
-namespace SR2MP.Handlers;
+namespace SR2MP.Server.Handlers;
 
 public abstract class BasePacketHandler : IPacketHandler
 {

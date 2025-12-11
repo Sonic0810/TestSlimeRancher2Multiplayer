@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace SR2MP.Models;
+namespace SR2MP.Server.Models;
 
 public class ClientInfo
 {

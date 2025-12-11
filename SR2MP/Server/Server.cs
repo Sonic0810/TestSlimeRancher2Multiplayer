@@ -1,8 +1,8 @@
-using SR2MP.Managers;
+using SR2MP.Server.Managers;
 using SR2MP.Packets.Utils;
 using SR2MP.Packets.S2C;
 
-namespace SR2MP;
+namespace SR2MP.Server;
 
 public sealed class Server
 {
@@ -58,8 +58,7 @@ public sealed class Server
     {
         var leavePacket = new BroadcastPlayerLeavePacket
         {
-            // This needs to be dynamic in the future
-            Type = 4,
+            Type = (byte)PacketType.BroadcastPlayerLeave,
             PlayerId = client.PlayerId
         };
 
@@ -101,8 +100,7 @@ public sealed class Server
 
             var closePacket = new ClosePacket
             {
-                // This needs to be dynamic in the future
-                Type = 2
+                Type = (byte)PacketType.Close
             };
 
             using var writer = new PacketWriter();
