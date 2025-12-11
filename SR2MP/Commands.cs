@@ -9,15 +9,44 @@ public class HostCommand : SR2ECommand
 {
     private static Server? server;
 
+    public override string ID => "host";
+    public override string Usage => "host <port>";
+
     public override bool Execute(string[] args)
     {
         server = new Server();
-        server.Start(1919);
+        server.Start(args.Length == 1 ? int.Parse(args[0]) : 1919);
         return true;
     }
 
-    public override string ID => "host";
-    public override string Usage => "host <port>";
+    public override List<string> GetAutoComplete(int argIndex, string[] args)
+    {
+        if (argIndex == 0)
+            return new List<string>
+            {
+                "1900",
+                "1901",
+                "1902",
+                "1903",
+                "1904",
+                "1905",
+                "1906",
+                "1907",
+                "1908",
+                "1909",
+                "1910",
+                "1911",
+                "1912",
+                "1913",
+                "1914",
+                "1915",
+                "1916",
+                "1917",
+                "1918",
+                "1919"
+            };
+        return null;
+    }
 }
 
 public class JoinCommand : SR2ECommand
