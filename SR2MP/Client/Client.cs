@@ -5,6 +5,7 @@ using SR2MP.Client.Models;
 using SR2MP.Packets.C2S;
 using SR2MP.Packets.S2C;
 using SR2MP.Packets.Utils;
+using SR2MP.Shared.Utils;
 
 namespace SR2MP.Client;
 

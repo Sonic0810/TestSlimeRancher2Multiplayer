@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace SR2MP.Packets.Utils;
+namespace SR2MP.Shared.Utils;
 
 public static class PlayerIdGenerator
 {
