@@ -101,6 +101,8 @@ public sealed class Client
                 if (data.Length > 0)
                 {
                     packetManager.HandlePacket(data);
+                    SrLogger.LogMessage($"Received {data.Length} bytes",
+                        $"Received {data.Length} bytes from {remoteEP}");
                 }
             }
             catch (SocketException)

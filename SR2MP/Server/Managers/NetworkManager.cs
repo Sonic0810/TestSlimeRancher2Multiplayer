@@ -58,6 +58,8 @@ public class NetworkManager
                 if (data.Length > 0)
                 {
                     OnDataReceived?.Invoke(data, remoteEP);
+                    SrLogger.LogMessage($"Received {data.Length} bytes",
+                        $"Received {data.Length} bytes from {remoteEP}");
                 }
             }
             catch (SocketException)
