@@ -52,6 +52,7 @@ public sealed class Client
         {
             udpClient = new UdpClient();
             serverEndPoint = new IPEndPoint(IPAddress.Parse(serverIp), port);
+            udpClient.Connect(serverEndPoint);
 
             OwnPlayerId = PlayerIdGenerator.GeneratePersistentPlayerId();
 
