@@ -30,18 +30,19 @@ public class ConnectHandler : BasePacketHandler
 
         var ackPacket = new ConnectAckPacket
         {
-            Type = (byte)PacketType.ConnectAck
+            Type = (byte)PacketType.ConnectAck,
+            PlayerId = playerId
         };
 
         SendToClient(ackPacket, client);
 
-        var joinPacket = new BroadcastPlayerJoinPacket
-        {
-            Type = (byte)PacketType.PlayerJoin,
-            PlayerId = playerId
-        };
+        // var joinPacket = new BroadcastPlayerJoinPacket
+        // {
+        //    Type = (byte)PacketType.PlayerJoin,
+        //    PlayerId = playerId
+        // };
 
-        BroadcastToAllExcept(joinPacket, senderEndPoint);
+        // BroadcastToAllExcept(joinPacket, senderEndPoint);
 
         SrLogger.LogMessage($"Player {playerId} successfully connected",
             $"Player {playerId} successfully connected from {senderEndPoint}");

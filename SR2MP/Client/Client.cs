@@ -58,7 +58,6 @@ public sealed class Client
 
             packetManager.RegisterHandlers();
 
-            isConnected = true;
             receiveThread = new Thread(ReceiveLoop);
             receiveThread.IsBackground = true;
             receiveThread.Start();
@@ -241,6 +240,7 @@ public sealed class Client
     internal void NotifyConnected()
     {
         OnConnected?.Invoke(OwnPlayerId);
+        isConnected = true;
     }
 
     internal void NotifyChatMessageReceived(string playerId, string message, DateTime timestamp)
