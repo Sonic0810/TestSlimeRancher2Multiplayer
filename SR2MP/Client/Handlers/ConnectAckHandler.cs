@@ -4,7 +4,8 @@ using SR2MP.Packets.Utils;
 
 namespace SR2MP.Client.Handlers;
 
-public sealed class ConnectAckHandler : BaseClientPacketHandler
+[PacketHandler((byte)PacketType.ConnectAck)]
+public class ConnectAckHandler : BaseClientPacketHandler
 {
     public ConnectAckHandler(Client client, RemotePlayerManager playerManager)
         : base(client, playerManager)
@@ -15,7 +16,6 @@ public sealed class ConnectAckHandler : BaseClientPacketHandler
     {
         using var reader = new PacketReader(data);
         var packet = reader.ReadPacket<ConnectAckPacket>();
-        packet.Deserialise(reader);
 
         if (Client.IsConnected)
         {

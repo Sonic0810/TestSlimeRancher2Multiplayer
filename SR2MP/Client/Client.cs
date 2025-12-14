@@ -55,8 +55,10 @@ public sealed class Client
             udpClient.Connect(serverEndPoint);
 
             OwnPlayerId = PlayerIdGenerator.GeneratePersistentPlayerId();
+            SrLogger.LogMessage($"Generated PlayerID: {OwnPlayerId}", SrLogger.LogTarget.Both);
 
             packetManager.RegisterHandlers();
+            SrLogger.LogMessage("Registered Handlers", SrLogger.LogTarget.Both);
 
             receiveThread = new Thread(ReceiveLoop);
             receiveThread.IsBackground = true;

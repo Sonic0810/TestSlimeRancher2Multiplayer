@@ -24,10 +24,13 @@ public class NetworkManager
         try
         {
             udpClient = new UdpClient(new IPEndPoint(IPAddress.Any, port));
+
+            udpClient.Client.ReceiveTimeout = 1000;
+
             isRunning = true;
 
             SrLogger.LogMessage($"Server started on port: {port}",
-                $"Server started {IPAddress.Any}: {port}");
+                $"Server started {IPAddress.Any}:{port}");
 
             receiveThread = new Thread(ReceiveLoop);
             receiveThread.IsBackground = true;

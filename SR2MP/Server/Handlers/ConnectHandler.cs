@@ -36,11 +36,11 @@ public class ConnectHandler : BasePacketHandler
 
         SendToClient(ackPacket, client);
 
-        // var joinPacket = new BroadcastPlayerJoinPacket
-        // {
-        //    Type = (byte)PacketType.PlayerJoin,
-        //    PlayerId = playerId
-        // };
+        var joinPacket = new BroadcastPlayerJoinPacket
+        {
+            Type = (byte)PacketType.PlayerJoin,
+            PlayerId = playerId
+        };
 
         // BroadcastToAllExcept(joinPacket, senderEndPoint);
 
