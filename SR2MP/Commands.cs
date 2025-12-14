@@ -55,8 +55,7 @@ public class JoinCommand : SR2ECommand
 {
     public override bool Execute(string[] args)
     {
-        var client = new Client.Client();
-        client.Connect(args[0],int.Parse(args[1]));
+        Main.Client.Connect(args[0],int.Parse(args[1]));
         return true;
     }
 

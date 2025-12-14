@@ -1,10 +1,11 @@
 ﻿using SR2E.Expansion;
-using SR2MP.Shared.Utils;
 
 namespace SR2MP;
 
 public sealed class Main : SR2EExpansionV2
 {
+    public static Client.Client Client { get; private set; }
+
     public static class BuildInfo
     {
         public const string Name = "Slime Rancher 2 Multiplayer Mod";
@@ -27,5 +28,6 @@ public sealed class Main : SR2EExpansionV2
 
     public override void OnLateInitializeMelon()
     {
+        Client = new Client.Client();
     }
 }
