@@ -49,6 +49,8 @@ public class MainThreadDispatcher : MonoBehaviour
 
     private void OnDestroy()
     {
+#nullable disable
         instance = null;
+#nullable enable
     }
 }

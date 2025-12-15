@@ -33,36 +33,6 @@ public class PlayerDataManager
         LoadAllPlayerData();
     }
 
-    public static string GeneratePersistentPlayerId()
-    {
-        try
-        {
-            // this works for linux too
-            string systemInfo = $"{Environment.MachineName}" +
-                                $"{Environment.UserName}";
-
-            using (SHA256 sha256 = SHA256.Create())
-            {
-                byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(systemInfo));
-
-                string hash = BitConverter.ToString(hashBytes)
-                    .Replace("-", "")
-                    .Substring(0, 9)
-                    .ToUpper();
-
-                string playerId = $"PLAYER_{hash}";
-
-                SrLogger.LogMessage($"Generated persistent player ID: {playerId}", SrLogger.LogTarget.Both);
-                return playerId;
-            }
-        }
-        catch (Exception ex)
-        {
-            SrLogger.LogError($"Failed to generate persistent player ID: {ex}", SrLogger.LogTarget.Both);
-            return null;
-        }
-    }
-
     public PlayerData GetOrCreatePlayerData(string playerId, string playerName = "Undefined name")
     {
         if (playerDataCache.TryGetValue(playerId, out var existingData))

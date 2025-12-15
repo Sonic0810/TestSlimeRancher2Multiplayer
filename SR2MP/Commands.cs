@@ -47,7 +47,9 @@ public class HostCommand : SR2ECommand
                 "1918",
                 "1919"
             };
+#nullable disable
         return null;
+#nullable enable
     }
 }
 

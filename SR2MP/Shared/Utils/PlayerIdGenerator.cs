@@ -30,7 +30,9 @@ public static class PlayerIdGenerator
         catch (Exception ex)
         {
             SrLogger.LogError($"Failed to generate persistent player ID: {ex}", SrLogger.LogTarget.Both);
+#nullable disable
             return null;
+#nullable enable
         }
     }
 
