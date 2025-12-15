@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 
@@ -24,8 +25,8 @@ public class NetworkManager
         try
         {
             udpClient = new UdpClient(new IPEndPoint(IPAddress.Any, port));
-
-            udpClient.Client.ReceiveTimeout = 1000;
+            // This is completely fine, THIS DOES NOT DELAY OR DROP PACKETS!!!
+            udpClient.Client.ReceiveTimeout = 10000;
 
             isRunning = true;
 
@@ -50,6 +51,7 @@ public class NetworkManager
             SrLogger.LogError("Server is null in ReceiveLoop!", SrLogger.LogTarget.Both);
             return;
         }
+
         SrLogger.LogMessage("Server ReceiveLoop started!", SrLogger.LogTarget.Both);
 
         IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
@@ -63,18 +65,19 @@ public class NetworkManager
                 if (data.Length > 0)
                 {
                     OnDataReceived?.Invoke(data, remoteEP);
-                    SrLogger.LogMessage($"Received {data.Length} bytes",
-                        $"Received {data.Length} bytes from {remoteEP}");
+                    SrLogger.LogMessage(
+                        $"Received {data.Length} bytes",
+                        $"Received {data.Length} bytes from {remoteEP}"
+                    );
                 }
             }
             catch (SocketException)
             {
-                if (!isRunning)
-                    return;
+                SrLogger.LogMessage("No Data Received!");
             }
             catch (Exception ex)
             {
-                SrLogger.LogError($"ReceiveLoop error: {ex}",  SrLogger.LogTarget.Both);
+                SrLogger.LogError($"ReceiveLoop error: {ex}", SrLogger.LogTarget.Both);
             }
         }
     }

@@ -58,7 +58,8 @@ public sealed class Client
             SrLogger.LogMessage($"Generated PlayerID: {OwnPlayerId}", SrLogger.LogTarget.Both);
 
             packetManager.RegisterHandlers();
-            SrLogger.LogMessage("Registered Handlers", SrLogger.LogTarget.Both);
+
+            isConnected = true;
 
             receiveThread = new Thread(ReceiveLoop);
             receiveThread.IsBackground = true;
@@ -242,7 +243,6 @@ public sealed class Client
     internal void NotifyConnected()
     {
         OnConnected?.Invoke(OwnPlayerId);
-        isConnected = true;
     }
 
     internal void NotifyChatMessageReceived(string playerId, string message, DateTime timestamp)

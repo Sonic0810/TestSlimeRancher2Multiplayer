@@ -1,7 +1,7 @@
 using SR2MP.Server.Managers;
 using SR2MP.Packets.Utils;
 using SR2MP.Packets.S2C;
-using UnityEngine;
+using SR2MP.Shared.Utils;
 
 namespace SR2MP.Server;
 
@@ -47,7 +47,8 @@ public sealed class Server
 
     private void OnDataReceived(byte[] data, System.Net.IPEndPoint clientEP)
     {
-        packetManager.HandlePacket(data, clientEP);
+        // I know, this looks terrible
+        MainThreadDispatcher.Enqueue(() => { packetManager.HandlePacket(data, clientEP);});
     }
 
     private void OnClientRemoved(Models.ClientInfo client)
