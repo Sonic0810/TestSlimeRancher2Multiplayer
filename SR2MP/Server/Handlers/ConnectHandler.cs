@@ -42,7 +42,7 @@ public class ConnectHandler : BasePacketHandler
             PlayerId = playerId
         };
 
-        // BroadcastToAllExcept(joinPacket, senderEndPoint);
+        BroadcastToAllExcept(joinPacket, senderEndPoint);
 
         SrLogger.LogMessage($"Player {playerId} successfully connected",
             $"Player {playerId} successfully connected from {senderEndPoint}");

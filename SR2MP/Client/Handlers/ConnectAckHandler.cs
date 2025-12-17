@@ -23,7 +23,7 @@ public class ConnectAckHandler : BaseClientPacketHandler
             return;
         }
 
-        // Client.StartHeartbeat();
+        Client.StartHeartbeat();
         Client.NotifyConnected();
 
         SrLogger.LogMessage($"Connection acknowledged by server! (PlayerId: {packet.PlayerId})", SrLogger.LogTarget.Both);

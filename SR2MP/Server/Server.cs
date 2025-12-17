@@ -37,7 +37,7 @@ public sealed class Server
             packetManager.RegisterHandlers();
             networkManager.Start(port);
 
-            // timeoutTimer = new Timer(CheckTimeouts, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            timeoutTimer = new Timer(CheckTimeouts, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
         }
         catch (Exception ex)
         {
