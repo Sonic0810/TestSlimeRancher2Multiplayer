@@ -26,7 +26,7 @@ public class NetworkManager
         {
             udpClient = new UdpClient(new IPEndPoint(IPAddress.Any, port));
             // This is completely fine, THIS DOES NOT DELAY OR DROP PACKETS!!!
-            udpClient.Client.ReceiveTimeout = 20000;
+            udpClient.Client.ReceiveTimeout = 2000;
 
             isRunning = true;
 
@@ -66,10 +66,11 @@ public class NetworkManager
 
                 if (data.Length > 0)
                 {
-                    OnDataReceived?.Invoke(data, remoteEP);
+                    var copy = new IPEndPoint(remoteEP.Address, remoteEP.Port);
+                    OnDataReceived?.Invoke(data, copy);
                     SrLogger.LogMessage(
                         $"Received {data.Length} bytes",
-                        $"Received {data.Length} bytes from {remoteEP}"
+                        $"Received {data.Length} bytes from {copy}"
                     );
                 }
             }
