@@ -9,8 +9,6 @@ public sealed class Main : SR2EExpansionV3
     public static Server.Server Server { get; private set; }
     public override void OnLateInitializeMelon()
     {
-        MainThreadDispatcher.Initialize();
-
         Client = new Client.Client();
         Server = new Server.Server();
     }

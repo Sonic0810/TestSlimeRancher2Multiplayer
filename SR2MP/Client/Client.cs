@@ -193,6 +193,7 @@ public sealed class Client
             byte[] data = writer.ToArray();
 
             udpClient.Send(data, data.Length);
+            SrLogger.LogMessage($"Sent {data.Length} bytes to Server.", SrLogger.LogTarget.Both);
         }
         catch (Exception ex)
         {

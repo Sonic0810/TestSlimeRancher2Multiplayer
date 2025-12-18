@@ -33,6 +33,7 @@ public class MainThreadDispatcher : MonoBehaviour
             try
             {
                 action?.Invoke();
+                SrLogger.LogMessage($"Received some action: {action}", SrLogger.LogTarget.Both);
             }
             catch (Exception ex)
             {
@@ -45,6 +46,7 @@ public class MainThreadDispatcher : MonoBehaviour
     {
         if (action == null) return;
         actionQueue.Enqueue(action);
+        SrLogger.LogMessage($"Enqueued some action: {action}");
     }
 
     private void OnDestroy()

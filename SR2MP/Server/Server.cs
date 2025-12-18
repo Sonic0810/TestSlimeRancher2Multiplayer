@@ -47,8 +47,17 @@ public sealed class Server
 
     private void OnDataReceived(byte[] data, System.Net.IPEndPoint clientEP)
     {
-        // I know, this looks terrible
-        MainThreadDispatcher.Enqueue(() => { packetManager.HandlePacket(data, clientEP);});
+        SrLogger.LogMessage($"Received {data.Length} bytes from Client!",
+            $"Received {data.Length} bytes from {clientEP}.");
+
+        try
+        {
+            packetManager.HandlePacket(data, clientEP);
+        }
+        catch (Exception ex)
+        {
+            SrLogger.LogError($"Error handling packet from {clientEP}: {ex}", SrLogger.LogTarget.Both);
+        }
     }
 
     private void OnClientRemoved(Models.ClientInfo client)

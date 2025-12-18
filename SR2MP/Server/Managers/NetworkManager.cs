@@ -63,16 +63,16 @@ public class NetworkManager
 
                 if (data.Length > 0)
                 {
-                    var copy = new IPEndPoint(remoteEP.Address, remoteEP.Port);
-                    OnDataReceived?.Invoke(data, copy);
+                    OnDataReceived?.Invoke(data, remoteEP);
                     SrLogger.LogMessage(
                         $"Received {data.Length} bytes",
-                        $"Received {data.Length} bytes from {copy}"
+                        $"Received {data.Length} bytes from {remoteEP}"
                     );
                 }
             }
             catch (SocketException)
             {
+                // will never get called
                 SrLogger.LogMessage("No Data received!", SrLogger.LogTarget.Both);
             }
             catch (Exception ex)
