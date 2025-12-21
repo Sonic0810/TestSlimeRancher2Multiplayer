@@ -1,6 +1,8 @@
+using System.Net;
 using SR2MP.Server.Managers;
 using SR2MP.Packets.Utils;
 using SR2MP.Packets.S2C;
+using SR2MP.Server.Models;
 
 namespace SR2MP.Server;
 
@@ -35,8 +37,8 @@ public sealed class Server
         {
             packetManager.RegisterHandlers();
             networkManager.Start(port, enableIPv6);
-
-            timeoutTimer = new Timer(CheckTimeouts, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+            // Commented because there is no real Heartbeat stuff
+            // timeoutTimer = new Timer(CheckTimeouts, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
         }
         catch (Exception ex)
         {
@@ -131,5 +133,51 @@ public sealed class Server
         {
             SrLogger.LogError($"Error during server shutdown: {ex}", SrLogger.LogTarget.Both);
         }
+    }
+    
+    
+    public void SendToClient(IPacket packet, IPEndPoint endPoint)
+    {
+        using var writer = new PacketWriter();
+        packet.Serialise(writer);
+        networkManager.Send(writer.ToArray(), endPoint);
+    }
+
+    public void SendToClient(IPacket packet, ClientInfo client)
+    {
+        SendToClient(packet, client.EndPoint);
+    }
+
+    public void SendToAll(IPacket packet)
+    {
+        using var writer = new PacketWriter();
+        packet.Serialise(writer);
+        byte[] data = writer.ToArray();
+
+        foreach (var client in clientManager.GetAllClients())
+        {
+            networkManager.Send(data, client.EndPoint);
+        }
+    }
+
+    public void SendToAllExcept(IPacket packet, string excludedClientInfo)
+    {
+        using var writer = new PacketWriter();
+        packet.Serialise(writer);
+        byte[] data = writer.ToArray();
+
+        foreach (var client in clientManager.GetAllClients())
+        {
+            if (client.GetClientInfo() != excludedClientInfo)
+            {
+                networkManager.Send(data, client.EndPoint);
+            }
+        }
+    }
+
+    public void SendToAllExcept(IPacket packet, IPEndPoint excludeEndPoint)
+    {
+        string clientInfo = $"{excludeEndPoint.Address}:{excludeEndPoint.Port}";
+        SendToAllExcept(packet, clientInfo);
     }
 }
