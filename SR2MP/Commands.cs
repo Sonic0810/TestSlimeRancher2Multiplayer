@@ -24,7 +24,7 @@ public class HostCommand : SR2ECommand
     }
 }
 
-public class JoinCommand : SR2ECommand
+public class ConnectCommand : SR2ECommand
 {
     public override bool Execute(string[] args)
     {
@@ -34,9 +34,10 @@ public class JoinCommand : SR2ECommand
         {
             return false;
         }
-
+        
         string ip = args[0];
         int port = int.Parse(args[1]);
+        // todo: Can probably be removed with the IPv6 stuff (or fixed)
         if (ip.StartsWith("[") && ip.EndsWith("]"))
         {
             ip = ip.Substring(1, ip.Length - 2);
@@ -46,6 +47,6 @@ public class JoinCommand : SR2ECommand
         return true;
     }
 
-    public override string ID => "join";
-    public override string Usage => "join <ip> <port>";
+    public override string ID => "connect";
+    public override string Usage => "connect <ip> <port>";
 }
