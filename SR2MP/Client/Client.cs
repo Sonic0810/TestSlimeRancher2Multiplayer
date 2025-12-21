@@ -135,8 +135,6 @@ public sealed class Client
         }
     }
 
-    
-
     public void SendChatMessage(string message)
     {
         if (!isConnected || string.IsNullOrEmpty(OwnPlayerId))
