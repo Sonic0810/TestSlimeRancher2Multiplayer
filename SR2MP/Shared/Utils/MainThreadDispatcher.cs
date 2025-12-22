@@ -1,7 +1,5 @@
 using UnityEngine;
 using System.Collections.Concurrent;
-using System;
-using Il2CppInterop.Runtime.Injection;
 using MelonLoader;
 
 namespace SR2MP.Shared.Utils;
@@ -10,6 +8,7 @@ namespace SR2MP.Shared.Utils;
 public class MainThreadDispatcher : MonoBehaviour
 {
     public static MainThreadDispatcher Instance { get; private set; }
+
     private static readonly ConcurrentQueue<Action> actionQueue = new();
 
     public static void Initialize()
@@ -23,7 +22,9 @@ public class MainThreadDispatcher : MonoBehaviour
         SrLogger.LogMessage("Main thread dispatcher initialized", SrLogger.LogTarget.Both);
     }
 
-    void Update()
+#pragma warning disable CA1822 // Mark members as static
+    public void Update()
+#pragma warning restore CA1822 // Mark members as static
     {
         while (actionQueue.TryDequeue(out var action))
         {
@@ -45,10 +46,7 @@ public class MainThreadDispatcher : MonoBehaviour
         SrLogger.LogMessage($"Enqueued some action: {action}");
     }
 
-    private void OnDestroy()
-    {
-#nullable disable
-        Instance = null;
-#nullable enable
-    }
+#pragma warning disable CA1822 // Mark members as static
+    public void OnDestroy() => Instance = null!;
+#pragma warning restore CA1822 // Mark members as static
 }

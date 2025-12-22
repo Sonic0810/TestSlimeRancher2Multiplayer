@@ -11,27 +11,23 @@ public static class PlayerIdGenerator
         {
             string systemInfo = $"{Environment.MachineName}{Environment.UserName}";
 
-            using (SHA256 sha256 = SHA256.Create())
-            {
-                byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(systemInfo));
+            using SHA256 sha256 = SHA256.Create();
+            byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(systemInfo));
 
-                string hash = BitConverter.ToString(hashBytes)
-                    .Replace("-", "")
-                    .Substring(0, 9)
-                    .ToUpper();
+            string hash = BitConverter.ToString(hashBytes)
+                .Replace("-", "")
+                .Substring(0, 9)
+                .ToUpper();
 
-                string playerId = $"PLAYER_{hash}";
+            string playerId = $"PLAYER_{hash}";
 
-                SrLogger.LogMessage($"Generated persistent player ID: {playerId}", SrLogger.LogTarget.Both);
-                return playerId;
-            }
+            SrLogger.LogMessage($"Generated persistent player ID: {playerId}", SrLogger.LogTarget.Both);
+            return playerId;
         }
         catch (Exception ex)
         {
             SrLogger.LogError($"Failed to generate persistent player ID: {ex}", SrLogger.LogTarget.Both);
-#nullable disable
-            return null;
-#nullable enable
+            return null!;
         }
     }
 

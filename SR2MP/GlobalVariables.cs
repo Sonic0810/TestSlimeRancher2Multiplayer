@@ -7,7 +7,7 @@ public static class GlobalVariables
 {
     internal static GameObject playerPrefab;
 
-    public static Dictionary<string, GameObject> playerObjects = new();
+    public static readonly Dictionary<string, GameObject> playerObjects = new();
 
     public static RemotePlayerManager playerManager = new RemotePlayerManager();
 }
