@@ -25,7 +25,8 @@
 | Decorations       | 🟥     | Not implemented                                      |
 | Gray Labyrinth    | 🟥     | Not implemented                                      |
 
-# ⚠ MAKE SURE TO BACK UP YOUR SAVES, ALL YOUR PROGRESS WILL BE ERASED ⚠
+# ⚠ MAKE SURE TO BACK UP YOUR SAVES ⚠
+# ⚠ ALL YOUR PROGRESS WILL BE ERASED ⚠
 
 ## Acknowledgements
 Special thanks to:
