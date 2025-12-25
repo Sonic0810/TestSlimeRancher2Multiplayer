@@ -15,7 +15,7 @@
 | Player Inventory  | 🟥     | Not implemented                                      |
 | Initial Save load | 🟩     | Functional for everything ___currently___ synchronised|
 | Slimes            | 🟩     | Fully functional                                     |
-| Plorts            | 🟩     | Fully functional                                     |
+| Items             | 🟩     | Fully functional                                     |
 | Landplots         | 🟨     | Gardens and Silos missing functionality              |
 | Landplot upgrades | 🟩     | Fully functional                                     |
 | Gadgets           | 🟥     | Not implemented                                      |
