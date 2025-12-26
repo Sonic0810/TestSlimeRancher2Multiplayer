@@ -11,7 +11,7 @@ using SR2MP.Server.Models;
 namespace SR2MP.Server.Handlers;
 
 [PacketHandler((byte)PacketType.Connect)]
-public class ConnectHandler : BasePacketHandler
+public sealed class ConnectHandler : BasePacketHandler
 {
     public ConnectHandler(NetworkManager networkManager, ClientManager clientManager)
         : base(networkManager, clientManager) { }
@@ -30,7 +30,7 @@ public class ConnectHandler : BasePacketHandler
 
         var money = SceneContext.Instance.PlayerState.GetCurrency(GameContext.Instance.LookupDirector._currencyList[0].Cast<ICurrency>());
         var rainbowMoney = SceneContext.Instance.PlayerState.GetCurrency(GameContext.Instance.LookupDirector._currencyList[1].Cast<ICurrency>());
-        
+
         var ackPacket = new ConnectAckPacket
         {
             Type = (byte)PacketType.ConnectAck,
@@ -48,10 +48,10 @@ public class ConnectHandler : BasePacketHandler
         };
 
         Main.Server.SendToAllExcept(joinPacket, senderEndPoint);
-        
+
         SendPlotsPacket(senderEndPoint);
         SendActorsPacket(senderEndPoint);
-        
+
         SrLogger.LogMessage($"Player {playerId} successfully connected",
             $"Player {playerId} successfully connected from {senderEndPoint}");
     }
@@ -59,7 +59,7 @@ public class ConnectHandler : BasePacketHandler
     void SendActorsPacket(IPEndPoint client)
     {
         var actorsList = new List<ActorsPacket.Actor>();
-        
+
         foreach (var actorKeyValuePair in SceneContext.Instance.GameModel.identifiables)
         {
             var actor = actorKeyValuePair.Value;
@@ -74,8 +74,8 @@ public class ConnectHandler : BasePacketHandler
             });
         }
 
-        var actorsPacket = new ActorsPacket() 
-        { 
+        var actorsPacket = new ActorsPacket()
+        {
             Type = (byte)PacketType.InitialActors,
             Actors = actorsList
         };
@@ -85,18 +85,18 @@ public class ConnectHandler : BasePacketHandler
     void SendPlotsPacket(IPEndPoint client)
     {
         var plotsList = new List<LandPlotsPacket.Plot>();
-    
+
         foreach (var plotKeyValuePair in SceneContext.Instance.GameModel.landPlots)
         {
             var plot = plotKeyValuePair.Value;
             var id = plotKeyValuePair.Key;
-            
+
             var upgradesList = new Il2CppSystem.Collections.Generic.List<LandPlot.Upgrade>();
             foreach (var upgrade in plot.upgrades)
             {
                 upgradesList.Add(upgrade);
             }
-        
+
             plotsList.Add(new LandPlotsPacket.Plot()
             {
                 ID = id,
@@ -105,8 +105,8 @@ public class ConnectHandler : BasePacketHandler
             });
         }
 
-        var plotsPacket = new LandPlotsPacket() 
-        { 
+        var plotsPacket = new LandPlotsPacket()
+        {
             Type = (byte)PacketType.InitialPlots,
             Plots = plotsList
         };

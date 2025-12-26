@@ -6,7 +6,7 @@ using SR2MP.Packets.Utils;
 namespace SR2MP.Client.Handlers;
 
 [PacketHandler((byte)PacketType.BroadcastFastForward)]
-public class FastForwardHandler : BaseClientPacketHandler
+public sealed class FastForwardHandler : BaseClientPacketHandler
 {
     public FastForwardHandler(Client client, RemotePlayerManager playerManager)
         : base(client, playerManager) { }
@@ -15,7 +15,7 @@ public class FastForwardHandler : BaseClientPacketHandler
     {
         using var reader = new PacketReader(data);
         var packet = reader.ReadPacket<WorldTimePacket>();
-        
+
         handlingPacket = true;
         SceneContext.Instance.TimeDirector.FastForwardTo(packet.Time);
         handlingPacket = false;

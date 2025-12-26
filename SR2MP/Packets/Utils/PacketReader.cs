@@ -20,7 +20,7 @@ public sealed class PacketReader : IDisposable
     public long ReadLong() => reader.ReadInt64();
 
     public float ReadFloat() => reader.ReadSingle();
-    
+
     public double ReadDouble() => reader.ReadDouble();
 
     public string ReadString() => reader.ReadString();

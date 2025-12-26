@@ -7,7 +7,7 @@ using SR2MP.Shared.Managers;
 namespace SR2MP.Client.Handlers;
 
 [PacketHandler((byte)PacketType.ActorSpawn)]
-public class ActorSpawnHandler : BaseClientPacketHandler
+public sealed class ActorSpawnHandler : BaseClientPacketHandler
 {
     public ActorSpawnHandler(Client client, RemotePlayerManager playerManager)
         : base(client, playerManager) { }
@@ -16,7 +16,7 @@ public class ActorSpawnHandler : BaseClientPacketHandler
     {
         using var reader = new PacketReader(data);
         var packet = reader.ReadPacket<ActorSpawnPacket>();
-        
+
         var model = SceneContext.Instance.GameModel.CreateActorModel(
             packet.ActorId,
             actorManager.ActorTypes[packet.ActorType],

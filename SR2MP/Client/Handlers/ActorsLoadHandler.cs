@@ -7,7 +7,7 @@ using SR2MP.Packets.Utils;
 namespace SR2MP.Client.Handlers;
 
 [PacketHandler((byte)PacketType.InitialActors)]
-public class ActorsLoadHandler : BaseClientPacketHandler
+public sealed class ActorsLoadHandler : BaseClientPacketHandler
 {
     public ActorsLoadHandler(Client client, RemotePlayerManager playerManager)
         : base(client, playerManager) { }
@@ -18,19 +18,19 @@ public class ActorsLoadHandler : BaseClientPacketHandler
         var packet = reader.ReadPacket<ActorsPacket>();
 
         actorManager.Actors.Clear();
-        
+
         var toRemove = new Il2CppSystem.Collections.Generic.Dictionary<ActorId, IdentifiableModel>(
             SceneContext.Instance.GameModel.identifiables
                 .Cast<Il2CppSystem.Collections.Generic.IDictionary<ActorId, IdentifiableModel>>());
-        
+
         foreach (var actor in toRemove)
         {
             if (actor.value.ident.IsPlayer) continue;
-            
+
             var gameObject = actor.value.GetGameObject();
-            if (gameObject) 
+            if (gameObject)
                 Object.Destroy(gameObject);
-            
+
             SceneContext.Instance.GameModel.DestroyIdentifiableModel(actor.value);
         }
 
@@ -38,7 +38,7 @@ public class ActorsLoadHandler : BaseClientPacketHandler
         {
             var type = actorManager.ActorTypes[actor.ActorType];
             if (type.IsPlayer) continue;
-            
+
             var model = SceneContext.Instance.GameModel.CreateActorModel(
                     new ActorId(actor.ActorId),
                     type,

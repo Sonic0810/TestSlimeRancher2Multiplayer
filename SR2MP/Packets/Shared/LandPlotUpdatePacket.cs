@@ -16,7 +16,7 @@ public struct LandPlotUpdatePacket : IPacket
         writer.WriteByte(Type);
         writer.WriteString(ID);
         writer.WriteBool(IsUpgrade);
-        
+
         if (!IsUpgrade)
             writer.WriteEnum(PlotType);
         else
@@ -28,7 +28,7 @@ public struct LandPlotUpdatePacket : IPacket
         Type = reader.ReadByte();
         ID = reader.ReadString();
         IsUpgrade = reader.ReadBool();
-        
+
         if (!IsUpgrade)
             PlotType = reader.ReadEnum<LandPlot.Id>();
         else

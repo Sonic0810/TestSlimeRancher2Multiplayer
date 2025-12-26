@@ -5,7 +5,7 @@ using SR2MP.Packets.Utils;
 namespace SR2MP.Client.Handlers;
 
 [PacketHandler((byte)PacketType.PlayerFX)]
-public class PlayerFXHandler : BaseClientPacketHandler
+public sealed class PlayerFXHandler : BaseClientPacketHandler
 {
     public PlayerFXHandler(Client client, RemotePlayerManager playerManager)
         : base(client, playerManager) { }

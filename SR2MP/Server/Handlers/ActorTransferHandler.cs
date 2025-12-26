@@ -8,7 +8,7 @@ using SR2MP.Packets.Utils;
 namespace SR2MP.Server.Handlers;
 
 [PacketHandler((byte)PacketType.ActorTransfer)]
-public class ActorTransferHandler : BasePacketHandler
+public sealed class ActorTransferHandler : BasePacketHandler
 {
     public ActorTransferHandler(NetworkManager networkManager, ClientManager clientManager)
         : base(networkManager, clientManager) { }
@@ -33,10 +33,10 @@ public class ActorTransferHandler : BasePacketHandler
             vac.SetHeldRad(0f);
             vac._vacMode = VacuumItem.VacMode.NONE;
             gameObject.GetComponent<Vacuumable>().Release();
-        } 
-        
+        }
+
         component.LocallyOwned = false;
-        
+
         Main.Server.SendToAllExcept(packet, senderEndPoint);
     }
 }

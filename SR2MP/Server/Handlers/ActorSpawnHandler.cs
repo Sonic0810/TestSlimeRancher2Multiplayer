@@ -8,7 +8,7 @@ using SR2MP.Packets.Utils;
 namespace SR2MP.Server.Handlers;
 
 [PacketHandler((byte)PacketType.ActorSpawn)]
-public class ActorSpawnHandler : BasePacketHandler
+public sealed class ActorSpawnHandler : BasePacketHandler
 {
     public ActorSpawnHandler(NetworkManager networkManager, ClientManager clientManager)
         : base(networkManager, clientManager) { }
@@ -17,7 +17,7 @@ public class ActorSpawnHandler : BasePacketHandler
     {
         using var reader = new PacketReader(data);
         var packet = reader.ReadPacket<ActorSpawnPacket>();
-        
+
         var model = SceneContext.Instance.GameModel.CreateActorModel(
                 packet.ActorId,
                 actorManager.ActorTypes[packet.ActorType],
@@ -42,7 +42,7 @@ public class ActorSpawnHandler : BasePacketHandler
                 actorManager.Actors.Add(packet.ActorId.Value, model);
             }
         }
-        
+
         Main.Server.SendToAllExcept(packet, senderEndPoint);
     }
 }

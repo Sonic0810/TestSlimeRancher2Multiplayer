@@ -5,7 +5,7 @@ using MelonLoader;
 namespace SR2MP.Components.Utils;
 
 [RegisterTypeInIl2Cpp(false)]
-public class TransformLookAtCamera : MonoBehaviour
+public sealed class TransformLookAtCamera : MonoBehaviour
 {
     public Transform targetTransform;
 
@@ -23,7 +23,7 @@ public class TransformLookAtCamera : MonoBehaviour
         }
         if (!targetTransform)
             return;
-        
+
         targetTransform.LookAt(playerCamera.transform);
 
         if (isText)
