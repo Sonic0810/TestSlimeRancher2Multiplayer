@@ -9,7 +9,7 @@ namespace SR2MP.Patches.Actor;
 [HarmonyPatch(typeof(SceneContext), nameof(SceneContext.Start))]
 public static class OnGameLoadPatch
 {
-    public static void Postfix(SceneContext __instance)
+    public static void Postfix()
     {
         Main.Server.OnServerStarted += () =>
         {
