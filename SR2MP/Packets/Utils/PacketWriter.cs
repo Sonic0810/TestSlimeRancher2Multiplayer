@@ -14,6 +14,7 @@ public sealed class PacketWriter : IDisposable
     }
 
     public void WriteByte(byte value) => writer.Write(value);
+    public void WriteSByte(sbyte value) => writer.Write(value);
 
     public void WriteInt(int value) => writer.Write(value);
     public void WriteLong(long value) => writer.Write(value);
@@ -79,6 +80,8 @@ public sealed class PacketWriter : IDisposable
             throw new ArgumentNullException(nameof(value));
         else if (value is byte @byte)
             WriteByte(@byte);
+        else if (value is sbyte @sbyte)
+            WriteSByte(@sbyte);
         else if (value is int @int)
             WriteInt(@int);
         else if (value is long @long)
