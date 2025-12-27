@@ -30,5 +30,7 @@ public enum PacketType : byte
     InitialPlots = 30,            // Server -> Client                                                                   Plots on Load
     WorldFX = 31,                 // Both Ways                                                                          On World FX Play
     InitialPlayerUpgrades = 32,   // Server -> Client                                                                   Player Upgrades on Load
-    InitialPediaEntries = 32      // Server -> Client                                                                   Pedia Entries on Load
+    PlayerUpgrade = 33,           // Both Ways                                                                          On Upgrade
+    InitialPediaEntries = 34,     // Server -> Client                                                                   Pedia Entries on Load
+    PediaUnlock = 35,             // Both Ways                                                                          On World FX Play
 }
