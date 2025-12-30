@@ -12,6 +12,7 @@ using System.Reflection;
 using System.Collections.Generic;
 
 using Il2CppMonomiPark.SlimeRancher.Economy;
+using Il2CppMonomiPark.SlimeRancher.Player.CharacterController;
 using SR2MP.Server;
 using SR2MP.Client;
 
@@ -150,7 +151,7 @@ public sealed class Main : SR2EExpansionV3
             var player = SceneContext.Instance?.Player;
             if (player != null)
             {
-                // Try to find the conservatory spawn point
+                // Teleport to spawn point
                 var spawnPoint = GameObject.Find("PlayerSpawnPoint");
                 if (spawnPoint != null)
                 {
@@ -159,10 +160,44 @@ public sealed class Main : SR2EExpansionV3
                 }
                 else
                 {
-                    // Fallback: teleport to a known safe position (conservatory default)
-                    player.transform.position = new Vector3(-70f, 12f, 2f); // Approximate conservatory spawn
+                    player.transform.position = new Vector3(-70f, 12f, 2f);
                     SrLogger.LogMessage($"Teleported player to fallback position: {player.transform.position}", SrLogger.LogTarget.Both);
                 }
+                
+                // Diagnose input state
+                var inputDirector = GameContext.Instance?.InputDirector;
+                if (inputDirector != null)
+                {
+                    bool pausedEnabled = inputDirector._paused?.Map?.enabled ?? false;
+                    SrLogger.LogMessage($"InputDirector paused map enabled: {pausedEnabled}", SrLogger.LogTarget.Both);
+                    
+                    // If pause input is enabled, player might be in paused state
+                    if (pausedEnabled)
+                    {
+                        SrLogger.LogWarning("Game appears to be in paused state after save load!", SrLogger.LogTarget.Both);
+                    }
+                }
+                else
+                {
+                    SrLogger.LogWarning("InputDirector is null!", SrLogger.LogTarget.Both);
+                }
+                
+                // Check player controller
+                var controller = player.GetComponent<SRCharacterController>();
+                if (controller != null)
+                {
+                    SrLogger.LogMessage($"SRCharacterController enabled: {controller.enabled}", SrLogger.LogTarget.Both);
+                    if (!controller.enabled)
+                    {
+                        controller.enabled = true;
+                        SrLogger.LogMessage("Enabled SRCharacterController!", SrLogger.LogTarget.Both);
+                    }
+                }
+                else
+                {
+                    SrLogger.LogWarning("SRCharacterController not found on player!", SrLogger.LogTarget.Both);
+                }
+
             }
             else
             {
@@ -171,9 +206,10 @@ public sealed class Main : SR2EExpansionV3
         }
         catch (Exception ex)
         {
-            SrLogger.LogError($"Error teleporting player: {ex}", SrLogger.LogTarget.Both);
+            SrLogger.LogError($"Error in TeleportPlayerAfterDelay: {ex}", SrLogger.LogTarget.Both);
         }
     }
+
 
 
     public override void AfterGameContext(GameContext gameContext)
