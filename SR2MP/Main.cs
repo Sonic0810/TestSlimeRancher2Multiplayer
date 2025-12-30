@@ -232,37 +232,61 @@ public sealed class Main : SR2EExpansionV3
                 }
 
                 // Attempt to find and enable a gameplay-like map via reflection
-                foreach (var field in inputDirector.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                SrLogger.LogMessage("Searching for gameplay input maps...", SrLogger.LogTarget.Both);
+                var allFields = inputDirector.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                var allProperties = inputDirector.GetType().GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                foreach (var field in allFields)
                 {
-                    if (field.Name.ToLower().Contains("gameplay") || field.Name.ToLower().Contains("default") || field.Name.ToLower().Contains("player"))
-                    {
-                        var mapObj = field.GetValue(inputDirector);
-                        if (mapObj != null)
-                        {
-                            var mapProperty = mapObj.GetType().GetProperty("Map") ?? mapObj.GetType().GetProperty("map");
-                            if (mapProperty != null)
-                            {
-                                var map = mapProperty.GetValue(mapObj);
-                                if (map != null)
-                                {
-                                    var enableMethod = map.GetType().GetMethod("Enable");
-                                    if (enableMethod != null)
-                                    {
-                                        enableMethod.Invoke(map, null);
-                                        SrLogger.LogMessage($"Enabled input map via reflection: {field.Name}", SrLogger.LogTarget.Both);
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    TryEnableMapFromObject(field.GetValue(inputDirector), field.Name, "Field");
+                }
+                foreach (var prop in allProperties)
+                {
+                    try { TryEnableMapFromObject(prop.GetValue(inputDirector), prop.Name, "Property"); } catch { }
                 }
             }
 
             UnityEngine.Time.timeScale = 1f;
+
+            // Final safety check: if we were stuck loading, the above reflection should have fixed it, 
+            // but let's log the final state.
+            SrLogger.LogMessage($"Final Join Phase: TimeScale={UnityEngine.Time.timeScale}", SrLogger.LogTarget.Both);
         }
         catch (Exception ex)
         {
             SrLogger.LogError($"Post-Teleport Error: {ex}", SrLogger.LogTarget.Both);
+        }
+    }
+
+    private static void TryEnableMapFromObject(object obj, string memberName, string memberType)
+    {
+        if (obj == null) return;
+        
+        string nameLower = memberName.ToLower();
+        // Keywords that usually indicate the main gameplay/player input map
+        if (nameLower.Contains("gameplay") || nameLower.Contains("default") || nameLower.Contains("player") || nameLower.Contains("ingame"))
+        {
+            try
+            {
+                var mapProperty = obj.GetType().GetProperty("Map") ?? obj.GetType().GetProperty("map");
+                if (mapProperty != null)
+                {
+                    var map = mapProperty.GetValue(obj);
+                    if (map != null)
+                    {
+                        var enableMethod = map.GetType().GetMethod("Enable");
+                        if (enableMethod != null)
+                        {
+                            enableMethod.Invoke(map, null);
+                            SrLogger.LogMessage($"SUCCESS: Enabled input map via reflection: [{memberType}] {memberName}", SrLogger.LogTarget.Both);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SrLogger.LogWarning($"Failed to enable map on {memberName}: {ex.Message}");
+            }
         }
     }
 

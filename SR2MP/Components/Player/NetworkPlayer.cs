@@ -120,6 +120,13 @@ namespace SR2MP.Components.Player
         {
             if (model == null)
             {
+                if (IsLocal)
+                {
+                    // Local player doesn't need to be in playerManager for basic state, 
+                    // but we might need it for inventory syncing later. 
+                    // For now, let's just avoid the automatic addition/log.
+                    return;
+                }
                 model = GlobalVariables.playerManager.GetPlayer(ID) ?? GlobalVariables.playerManager.AddPlayer(ID);
                 return;
             }
