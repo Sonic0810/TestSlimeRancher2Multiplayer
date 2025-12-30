@@ -10,15 +10,17 @@ public static class PacketChunkManager
         public byte chunkIndex;
         public byte totalChunks;
     }
-    internal static Dictionary<PacketType, IncompletePacket> incompletePackets = new();
+    // Key: SenderID + PacketType
+    internal static Dictionary<string, IncompletePacket> incompletePackets = new();
 
     internal const int MaxChunkBytes = 250;
 
-    internal static bool TryMergePacket(PacketType packetType, byte[] data, byte chunkIndex, byte totalChunks, out byte[] fullData)
+    internal static bool TryMergePacket(PacketType packetType, byte[] data, byte chunkIndex, byte totalChunks, string senderId, out byte[] fullData)
     {
         fullData = null!;
+        string key = $"{senderId}_{packetType}";
         
-        if (!incompletePackets.TryGetValue(packetType, out var packet))
+        if (!incompletePackets.TryGetValue(key, out var packet))
         {
             packet = new IncompletePacket
             {
@@ -26,25 +28,43 @@ public static class PacketChunkManager
                 chunkIndex = 0,
                 totalChunks = totalChunks,
             };
-            incompletePackets[packetType] = packet;
+            incompletePackets[key] = packet;
         }
         
+        // Safety check for array bounds
+        if (chunkIndex >= packet.chunks.Length)
+        {
+            SrLogger.LogWarning($"Received invalid chunk index {chunkIndex} for packet {packetType} from {senderId}");
+            return false;
+        }
+
         packet.chunks[chunkIndex] = data;
         packet.chunkIndex++;
-        SrLogger.LogPacketSize($"New chunk: type: {packetType}, index: {chunkIndex}, total: {totalChunks}");
+        // SrLogger.LogPacketSize($"New chunk: type: {packetType}, index: {chunkIndex}, total: {totalChunks} from {senderId}");
         
 
-        if (chunkIndex + 1 >= packet.totalChunks)
+        // Check if all chunks are present (simple count check, assuming no duplicates/drops for now)
+        // ideally we check if every index is filled, but UDP...
+        // For now, if we have enough chunks, try to assemble.
+        // But unordered delivery might mess up 'packet.chunkIndex' (which acts as count).
+        // Let's rely on receiving 'totalChunks' unique chunks.
+        
+        if (packet.chunkIndex >= packet.totalChunks)
         {
             var completeData = new List<byte>();
             foreach (var chunk in packet.chunks)
             {
+                if (chunk == null)
+                {
+                    // Missing a chunk
+                    return false;
+                }
                 completeData.AddRange(chunk);
             }
 
-            incompletePackets.Remove(packetType);
+            incompletePackets.Remove(key);
             
-            SrLogger.LogPacketSize($"Fully finished merge: type={packetType}");
+            SrLogger.LogPacketSize($"Fully finished merge: type={packetType} from {senderId}");
             
             fullData = completeData.ToArray();
             return true;

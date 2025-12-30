@@ -90,7 +90,11 @@ public sealed class NetworkManager
 
         try
         {
-            udpClient.Send(data, data.Length, targetEndPoint);
+            var split = PacketChunkManager.SplitPacket(data);
+            foreach (var chunk in split)
+            {
+                udpClient.Send(chunk, chunk.Length, targetEndPoint);
+            }
         }
         catch (Exception ex)
         {

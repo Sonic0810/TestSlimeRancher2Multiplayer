@@ -51,12 +51,29 @@ public sealed class PacketManager
 
     public void HandlePacket(byte[] data, string clientIdentifier)
     {
-        if (data.Length < 1)
+        if (data.Length < 3)
         {
-            SrLogger.LogWarning("Received empty packet", SrLogger.LogTarget.Both);
+            SrLogger.LogWarning($"Received packet too small for chunk header from {clientIdentifier}", SrLogger.LogTarget.Both);
             return;
         }
 
+        byte packetType = data[0];
+        byte chunkIndex = data[1];
+        byte totalChunks = data[2];
+
+        // Slice payload
+        var payload = new byte[data.Length - 3];
+        Buffer.BlockCopy(data, 3, payload, 0, data.Length - 3);
+
+        if (PacketChunkManager.TryMergePacket((PacketType)packetType, payload, chunkIndex, totalChunks, clientIdentifier, out var fullData))
+        {
+            HandleFullPacket(fullData, clientIdentifier);
+        }
+    }
+
+    private void HandleFullPacket(byte[] data, string clientIdentifier)
+    {
+        if (data.Length < 1) return;
         byte packetType = data[0];
 
         if (handlers.TryGetValue(packetType, out var handler))
@@ -67,7 +84,7 @@ public sealed class PacketManager
             }
             catch (Exception ex)
             {
-                SrLogger.LogError($"Error handling packet type {packetType}: {ex}", SrLogger.LogTarget.Both);
+                SrLogger.LogError($"Error handling packet type {packetType} from {clientIdentifier}: {ex}", SrLogger.LogTarget.Both);
             }
         }
         else

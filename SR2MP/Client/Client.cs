@@ -179,9 +179,13 @@ public sealed class Client
 
             SrLogger.LogPacketSize($"Sending {data.Length} bytes to Server...", SrLogger.LogTarget.Both);
 
-            udpClient.Send(data, data.Length);
+            var split = PacketChunkManager.SplitPacket(data);
+            foreach (var chunk in split)
+            {
+                udpClient.Send(chunk, chunk.Length);
+            }
 
-            SrLogger.LogPacketSize($"Sent {data.Length} bytes to Server.",
+            SrLogger.LogPacketSize($"Sent {data.Length} bytes to Server in {split.Length} chunk(s).",
                 SrLogger.LogTarget.Both);
         }
         catch (Exception ex)
