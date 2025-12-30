@@ -112,13 +112,20 @@ public sealed class Main : SR2EExpansionV3
                 // Spawn Players
                 foreach (var player in pd.OtherPlayers)
                 {
-                   var playerObject = Object.Instantiate(playerPrefab).GetComponent<NetworkPlayer>();
-                   playerObject.gameObject.SetActive(true);
-                   playerObject.ID = player;
-                   playerObject.gameObject.name = player;
-                   playerObjects[player] = playerObject.gameObject; // Use indexer to add or update
-                   playerManager.AddPlayer(player);
-                   Object.DontDestroyOnLoad(playerObject);
+                    // Filter out the local player ID so we don't spawn a ghost of ourselves
+                    if (player == pd.PlayerId)
+                    {
+                        SrLogger.LogMessage($"Skipping local player proxy spawn: {player}", SrLogger.LogTarget.Both);
+                        continue;
+                    }
+
+                    var playerObject = Object.Instantiate(playerPrefab).GetComponent<NetworkPlayer>();
+                    playerObject.gameObject.SetActive(true);
+                    playerObject.ID = player;
+                    playerObject.gameObject.name = player;
+                    playerObjects[player] = playerObject.gameObject; // Use indexer to add or update
+                    playerManager.AddPlayer(player);
+                    Object.DontDestroyOnLoad(playerObject);
                 }
 
                 // Send Join Packet
@@ -144,82 +151,79 @@ public sealed class Main : SR2EExpansionV3
     
     private static System.Collections.IEnumerator TeleportPlayerAfterDelay()
     {
-        // Wait a bit for the world to fully load
-        yield return new WaitForSeconds(2f);
+        // Wait for the world to stabilize
+        yield return new WaitForSeconds(3f);
         
+        SRCharacterController controller = null;
+        bool wasControllerEnabled = false;
+
         try
         {
             var player = SceneContext.Instance?.Player;
             if (player != null)
             {
+                controller = player.GetComponent<SRCharacterController>();
+                wasControllerEnabled = controller != null && controller.enabled;
+
+                // Temporarily disable the character controller to ensure teleport works consistently
+                if (controller != null) controller.enabled = false;
+
                 // Teleport to spawn point
                 var spawnPoint = GameObject.Find("PlayerSpawnPoint");
                 if (spawnPoint != null)
                 {
-                    player.transform.position = spawnPoint.transform.position + Vector3.up * 1f;
+                    player.transform.position = spawnPoint.transform.position + Vector3.up * 1.5f;
                     SrLogger.LogMessage($"Teleported player to spawn point: {player.transform.position}", SrLogger.LogTarget.Both);
                 }
                 else
                 {
-                    player.transform.position = new Vector3(-70f, 12f, 2f);
+                    player.transform.position = new Vector3(-70f, 13f, 2f);
                     SrLogger.LogMessage($"Teleported player to fallback position: {player.transform.position}", SrLogger.LogTarget.Both);
                 }
-                
-                // Fix paused state after save load
-                var inputDirector = GameContext.Instance?.InputDirector;
-                if (inputDirector != null)
-                {
-                    bool pausedEnabled = inputDirector._paused?.Map?.enabled ?? false;
-                    SrLogger.LogMessage($"InputDirector paused map enabled: {pausedEnabled}", SrLogger.LogTarget.Both);
-                    
-                    // If game is paused after save load, unpause it
-                    if (pausedEnabled && inputDirector._paused?.Map != null)
-                    {
-                        SrLogger.LogMessage("Game is paused after save load - disabling pause map...", SrLogger.LogTarget.Both);
-                        
-                        // Disable pause input map directly
-                        inputDirector._paused.Map.Disable();
-                        SrLogger.LogMessage("Disabled pause input map!", SrLogger.LogTarget.Both);
-                        
-                        // Set time scale to 1 to ensure game runs
-                        UnityEngine.Time.timeScale = 1f;
-                        SrLogger.LogMessage("Set TimeScale to 1!", SrLogger.LogTarget.Both);
-                    }
-                }
-                else
-                {
-                    SrLogger.LogWarning("InputDirector is null!", SrLogger.LogTarget.Both);
-                }
-
-
-                
-                // Check player controller
-                var controller = player.GetComponent<SRCharacterController>();
-                if (controller != null)
-                {
-                    SrLogger.LogMessage($"SRCharacterController enabled: {controller.enabled}", SrLogger.LogTarget.Both);
-                    if (!controller.enabled)
-                    {
-                        controller.enabled = true;
-                        SrLogger.LogMessage("Enabled SRCharacterController!", SrLogger.LogTarget.Both);
-                    }
-                }
-                else
-                {
-                    SrLogger.LogWarning("SRCharacterController not found on player!", SrLogger.LogTarget.Both);
-                }
-
-            }
-            else
-            {
-                SrLogger.LogWarning("Could not find player to teleport!", SrLogger.LogTarget.Both);
             }
         }
         catch (Exception ex)
         {
-            SrLogger.LogError($"Error in TeleportPlayerAfterDelay: {ex}", SrLogger.LogTarget.Both);
+            SrLogger.LogError($"Teleport Error: {ex}", SrLogger.LogTarget.Both);
+        }
+
+        // Wait a frame then re-enable (OUTSIDE try-catch)
+        yield return null;
+
+        try
+        {
+            if (controller != null && wasControllerEnabled) controller.enabled = true;
+
+            // Fix input/paused state
+            var inputDirector = GameContext.Instance?.InputDirector;
+            if (inputDirector != null)
+            {
+                bool pausedEnabled = inputDirector._paused?.Map?.enabled ?? false;
+                SrLogger.LogMessage($"Post-Join Input State: Paused={pausedEnabled}", SrLogger.LogTarget.Both);
+                
+                if (pausedEnabled)
+                {
+                    SrLogger.LogMessage("Forcing game unpause...", SrLogger.LogTarget.Both);
+                    inputDirector._paused.Map.Disable();
+                    
+                    // Try to find the pause menu root and disable it if it exists
+                    var pauseMenu = GameObject.Find("PauseMenu") ?? GameObject.Find("PauseMenuDirector");
+                    if (pauseMenu != null)
+                    {
+                        pauseMenu.SetActive(false);
+                        SrLogger.LogMessage("Deactivated Pause Menu object.", SrLogger.LogTarget.Both);
+                    }
+                }
+            }
+
+            UnityEngine.Time.timeScale = 1f;
+        }
+        catch (Exception ex)
+        {
+            SrLogger.LogError($"Post-Teleport Error: {ex}", SrLogger.LogTarget.Both);
         }
     }
+
 
 
 
