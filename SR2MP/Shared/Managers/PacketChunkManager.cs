@@ -7,15 +7,15 @@ public static class PacketChunkManager
     internal class IncompletePacket
     {
         public byte[][] chunks;
-        public byte chunkIndex;
-        public byte totalChunks;
+        public int chunkIndex;
+        public int totalChunks;
     }
     // Key: SenderID + PacketType
     internal static Dictionary<string, IncompletePacket> incompletePackets = new();
 
-    internal const int MaxChunkBytes = 250;
+    internal const int MaxChunkBytes = 400; // Increased slightly for efficiency, still safe UDP
 
-    internal static bool TryMergePacket(PacketType packetType, byte[] data, byte chunkIndex, byte totalChunks, string senderId, out byte[] fullData)
+    internal static bool TryMergePacket(PacketType packetType, byte[] data, int chunkIndex, int totalChunks, string senderId, out byte[] fullData)
     {
         fullData = null!;
         string key = $"{senderId}_{packetType}";
@@ -32,23 +32,23 @@ public static class PacketChunkManager
         }
         
         // Safety check for array bounds
-        if (chunkIndex >= packet.chunks.Length)
+        if (chunkIndex < 0 || chunkIndex >= packet.chunks.Length)
         {
-            SrLogger.LogWarning($"Received invalid chunk index {chunkIndex} for packet {packetType} from {senderId}");
+            SrLogger.LogWarning($"Received invalid chunk index {chunkIndex} for packet {packetType} (Total: {totalChunks}) from {senderId}");
             return false;
         }
 
-        packet.chunks[chunkIndex] = data;
-        packet.chunkIndex++;
-        // SrLogger.LogPacketSize($"New chunk: type: {packetType}, index: {chunkIndex}, total: {totalChunks} from {senderId}");
-        
+        if (packet.chunks[chunkIndex] != null)
+        {
+             // Duplicate chunk
+             return false; 
+        }
 
-        // Check if all chunks are present (simple count check, assuming no duplicates/drops for now)
-        // ideally we check if every index is filled, but UDP...
-        // For now, if we have enough chunks, try to assemble.
-        // But unordered delivery might mess up 'packet.chunkIndex' (which acts as count).
-        // Let's rely on receiving 'totalChunks' unique chunks.
+        packet.chunks[chunkIndex] = data;
+        packet.chunkIndex++; // Valid chunk received count
         
+        // Clean up stale logic later if needed (timeouts)
+
         if (packet.chunkIndex >= packet.totalChunks)
         {
             var completeData = new List<byte>();
@@ -56,7 +56,7 @@ public static class PacketChunkManager
             {
                 if (chunk == null)
                 {
-                    // Missing a chunk
+                    // Should not happen if count matches, but safety
                     return false;
                 }
                 completeData.AddRange(chunk);
@@ -79,17 +79,29 @@ public static class PacketChunkManager
 
         var packetType = data[0];
         var result = new byte[chunkCount][];
-        for (byte index = 0; index < chunkCount; index++)
+        
+        for (int index = 0; index < chunkCount; index++)
         {
             var offset = index * MaxChunkBytes;
             var chunkSize = Math.Min(MaxChunkBytes, data.Length - offset);
             
-            var buffer = new byte[3 + chunkSize];
+            // Header: [Type (1)] [Index (4)] [Total (4)] = 9 bytes
+            var buffer = new byte[9 + chunkSize];
             buffer[0] = packetType;
-            buffer[1] = index;
-            buffer[2] = (byte)chunkCount;
+            
+            // Write Index (int)
+            buffer[1] = (byte)(index);
+            buffer[2] = (byte)(index >> 8);
+            buffer[3] = (byte)(index >> 16);
+            buffer[4] = (byte)(index >> 24);
 
-            Buffer.BlockCopy(data, offset, buffer, 3, chunkSize);
+            // Write Total (int)
+            buffer[5] = (byte)(chunkCount);
+            buffer[6] = (byte)(chunkCount >> 8);
+            buffer[7] = (byte)(chunkCount >> 16);
+            buffer[8] = (byte)(chunkCount >> 24);
+
+            Buffer.BlockCopy(data, offset, buffer, 9, chunkSize);
             result[index] = buffer;
         }
         return result;

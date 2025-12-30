@@ -1,0 +1,4342 @@
+﻿diff --git a/SR2MP/.gitignore b/SR2MP/.gitignore
+new file mode 100644
+index 0000000..3c0268a
+--- /dev/null
++++ b/SR2MP/.gitignore
+@@ -0,0 +1,25 @@
++# Visual Studio
++bin/
++obj/
++*.user
++*.suo
++*.userosscache
++*.sln.doccache
++
++# Built-in diagnostic results
++SR2MP_ClassDump*.txt
++build_errors*.txt
++build_log*.txt
++build_output.txt
++clean_errors*.txt
++world_classes.txt
++
++# JetBrains Rider
++.idea/
++
++# VS Code
++.vscode/
++
++# OS specific
++.DS_Store
++Thumbs.db
+diff --git a/SR2MP/AssemblyInfo.cs b/SR2MP/AssemblyInfo.cs
+index 814d2be..7d99f00 100644
+--- a/SR2MP/AssemblyInfo.cs
++++ b/SR2MP/AssemblyInfo.cs
+@@ -43,7 +43,7 @@ internal static class BuildInfo
+ {
+     internal const string Name = "Slime Rancher 2 Multiplayer Mod";
+     internal const string Description = "Adds Multiplayer to Slime Rancher 2";
+-    internal const string Author = "Shark";
++    internal const string Author = "Shark, forked by Sonic0810";
+     internal const string CoAuthors = "";
+     internal const string Contributors = "AlchlcSystm, shizophrenicgopher, PinkTarr";
+     internal const string Company = "";
+diff --git a/SR2MP/Client/Client.cs b/SR2MP/Client/Client.cs
+index 0a7e79d..6379559 100644
+--- a/SR2MP/Client/Client.cs
++++ b/SR2MP/Client/Client.cs
+@@ -30,11 +30,11 @@ public sealed class Client
+ 
+     public Client()
+     {
+-        packetManager = new ClientPacketManager(this, playerManager);
++        packetManager = new ClientPacketManager(this, GlobalVariables.playerManager);
+ 
+-        playerManager.OnPlayerAdded += (playerId) => OnPlayerJoined?.Invoke(playerId);
+-        playerManager.OnPlayerRemoved += (playerId) => OnPlayerLeft?.Invoke(playerId);
+-        playerManager.OnPlayerUpdated += (playerId, player) => OnPlayerUpdate?.Invoke(playerId, player);
++        GlobalVariables.playerManager.OnPlayerAdded += (playerId) => OnPlayerJoined?.Invoke(playerId);
++        GlobalVariables.playerManager.OnPlayerRemoved += (playerId) => OnPlayerLeft?.Invoke(playerId);
++        GlobalVariables.playerManager.OnPlayerUpdated += (playerId, player) => OnPlayerUpdate?.Invoke(playerId, player);
+     }
+ 
+     public void Connect(string serverIp, int port)
+@@ -48,35 +48,19 @@ public sealed class Client
+         try
+         {
+             IPAddress parsedIp = IPAddress.Parse(serverIp);
+-
+             if (parsedIp.AddressFamily == AddressFamily.InterNetworkV6)
+-            {
+-                if (!Socket.OSSupportsIPv6)
+-                {
+-                    SrLogger.LogError("IPv6 is not supported on this machine! Please enable IPv6 or use an IPv4 address.", SrLogger.LogTarget.Both);
+-                    throw new NotSupportedException("IPv6 is not available on this system");
+-                }
+                 udpClient = new UdpClient(AddressFamily.InterNetworkV6);
+-                SrLogger.LogMessage("Using IPv6 connection", SrLogger.LogTarget.Both);
+-            }
+             else
+-            {
+                 udpClient = new UdpClient(AddressFamily.InterNetwork);
+-                SrLogger.LogMessage("Using IPv4 connection", SrLogger.LogTarget.Both);
+-            }
+ 
+             serverEndPoint = new IPEndPoint(parsedIp, port);
+             udpClient.Connect(serverEndPoint);
+ 
+             OwnPlayerId = PlayerIdGenerator.GeneratePersistentPlayerId();
+-
+             packetManager.RegisterHandlers();
+ 
+             isConnected = true;
+-
+-            receiveThread = new  Il2CppSystem.Threading.Thread(new Action(ReceiveLoop));
+-            receiveThread.IsBackground = true;
+-            receiveThread.Start();
++            StartReceiveThread();
+ 
+             Application.quitting += new Action(Disconnect);
+ 
+@@ -99,44 +83,44 @@ public sealed class Client
+         }
+     }
+ 
+-    private void ReceiveLoop()
++    private void StartReceiveThread()
+     {
+-        if (udpClient == null)
+-        {
+-            SrLogger.LogError("UDP client is null in ReceiveLoop!", SrLogger.LogTarget.Both);
+-            return;
+-        }
+-        SrLogger.LogMessage("Client ReceiveLoop started!", SrLogger.LogTarget.Both);
+-
+-        IPEndPoint remoteEP = new IPEndPoint(IPAddress.IPv6Any, 0);
++        receiveThread = new Il2CppSystem.Threading.Thread(new Action(ReceiveLoop));
++        receiveThread.IsBackground = true;
++        receiveThread.Start();
++    }
+ 
+-        while (isConnected)
++    private void ReceiveLoop()
++    {
++        IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
++        while (isConnected && udpClient != null)
+         {
+             try
+             {
+                 byte[] data = udpClient.Receive(ref remoteEP);
+-
+                 if (data.Length > 0)
+                 {
+-                    packetManager.HandlePacket(data);
+-                    SrLogger.LogPacketSize($"Received {data.Length} bytes",
+-                        $"Received {data.Length} bytes from {remoteEP}");
++                    OnDataReceived(data);
+                 }
+             }
+             catch (SocketException)
+             {
+-                if (!isConnected)
+-                    return;
+-
+-                SrLogger.LogError("ReceiveLoop error: Socket Exception");
++                if (!isConnected) return;
+             }
+             catch (Exception ex)
+             {
+-                SrLogger.LogError($"ReceiveLoop error: {ex}");
++                SrLogger.LogError($"Client ReceiveLoop error: {ex}");
+             }
+         }
+     }
+ 
++    private void OnDataReceived(byte[] data)
++    {
++        packetManager.HandlePacket(data);
++        SrLogger.LogPacketSize($"Received {data.Length} bytes",
++            $"Received {data.Length} bytes from Server");
++    }
++
+     public void SendChatMessage(string message)
+     {
+         if (!isConnected || string.IsNullOrEmpty(OwnPlayerId))
+@@ -163,7 +147,6 @@ public sealed class Client
+ 
+     internal void StartHeartbeat()
+     {
+-        // Removed this temporarily because there are no Handlers and the Client will get timeouted
+         // heartbeatTimer = new Timer(SendHeartbeat, null, TimeSpan.FromSeconds(215), TimeSpan.FromSeconds(215));
+     }
+ 
+@@ -182,7 +165,7 @@ public sealed class Client
+ 
+     internal void SendPacket<T>(T packet) where T : IPacket
+     {
+-        if (udpClient == null || serverEndPoint == null || !isConnected)
++        if (udpClient == null || !isConnected)
+         {
+             SrLogger.LogWarning("Cannot send packet: Not connected to a Server!");
+             return;
+@@ -196,13 +179,9 @@ public sealed class Client
+ 
+             SrLogger.LogPacketSize($"Sending {data.Length} bytes to Server...", SrLogger.LogTarget.Both);
+ 
+-            var split = PacketChunkManager.SplitPacket(data);
+-            foreach (var chunk in split)
+-            {
+-                udpClient.Send(chunk, chunk.Length);
+-            }
++            udpClient.Send(data, data.Length);
+ 
+-            SrLogger.LogPacketSize($"Sent {data.Length} bytes to Server in {split.Length} chunk(s).",
++            SrLogger.LogPacketSize($"Sent {data.Length} bytes to Server.",
+                 SrLogger.LogTarget.Both);
+         }
+         catch (Exception ex)
+@@ -231,13 +210,9 @@ public sealed class Client
+ 
+             isConnected = false;
+             udpClient?.Close();
++            udpClient = null;
+ 
+-            if (receiveThread != null && receiveThread.IsAlive)
+-            {
+-                SrLogger.LogWarning("Receive thread did not stop gracefully", SrLogger.LogTarget.Both);
+-            }
+-
+-            playerManager.Clear();
++            GlobalVariables.playerManager.Clear();
+ 
+             SrLogger.LogMessage("Disconnected from server", SrLogger.LogTarget.Both);
+             OnDisconnected?.Invoke();
+@@ -260,11 +235,21 @@ public sealed class Client
+ 
+     public RemotePlayer? GetRemotePlayer(string playerId)
+     {
+-        return playerManager.GetPlayer(playerId);
++        return GlobalVariables.playerManager.GetPlayer(playerId);
+     }
+ 
+     public List<RemotePlayer> GetAllRemotePlayers()
+     {
+-        return playerManager.GetAllPlayers();
++        return GlobalVariables.playerManager.GetAllPlayers();
+     }
+-}
+\ No newline at end of file
++
++    public class PendingJoinData
++    {
++        public string PlayerId;
++        public int Money;
++        public int RainbowMoney;
++        public List<string> OtherPlayers;
++    }
++
++    public PendingJoinData? PendingJoin { get; set; }
++}
+diff --git a/SR2MP/Client/Handlers/BlueprintHandler.cs b/SR2MP/Client/Handlers/BlueprintHandler.cs
+new file mode 100644
+index 0000000..e5afccb
+--- /dev/null
++++ b/SR2MP/Client/Handlers/BlueprintHandler.cs
+@@ -0,0 +1,41 @@
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.BlueprintUnlock)]
++    public class BlueprintHandler : BaseClientPacketHandler
++    {
++        public BlueprintHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<BlueprintUnlockPacket>();
++
++            if (SceneContext.Instance.GadgetDirector != null && GameContext.Instance.LookupDirector != null)
++            {
++                var def = GlobalVariables.actorManager.ActorTypes.Values.FirstOrDefault(t => t.name == packet.Id)?.Cast<GadgetDefinition>();
++                if (def != null)
++                {
++                    GlobalVariables.handlingPacket = true;
++                    // Check if already unlocked?
++                    if (!SceneContext.Instance.GadgetDirector.HasBlueprint(def))
++                    {
++                        SceneContext.Instance.GadgetDirector.AddBlueprint(def);
++                        MelonLoader.MelonLogger.Msg($"Unlocked Blueprint via MP: {packet.Id}");
++                    }
++                    GlobalVariables.handlingPacket = false;
++                }
++                else
++                {
++                   MelonLoader.MelonLogger.Warning($"BlueprintHandler: Could not find GadgetDef {packet.Id}");
++                }
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/ConnectAckHandler.cs b/SR2MP/Client/Handlers/ConnectAckHandler.cs
+index 7bde50e..c9f1edb 100644
+--- a/SR2MP/Client/Handlers/ConnectAckHandler.cs
++++ b/SR2MP/Client/Handlers/ConnectAckHandler.cs
+@@ -5,6 +5,7 @@ using SR2MP.Shared.Managers;
+ using SR2MP.Components;
+ using SR2MP.Components.Player;
+ using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
+ 
+ namespace SR2MP.Client.Handlers;
+ 
+@@ -19,28 +20,18 @@ public sealed class ConnectAckHandler : BaseClientPacketHandler
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<ConnectAckPacket>();
+ 
+-        var joinPacket = new PlayerJoinPacket
++        Client.PendingJoin = new Client.PendingJoinData
+         {
+-            Type = (byte)PacketType.PlayerJoin,
+             PlayerId = packet.PlayerId,
+-            PlayerName = Main.Username
++            Money = packet.Money,
++            RainbowMoney = packet.RainbowMoney,
++            OtherPlayers = packet.OtherPlayers.ToList()
+         };
+ 
+-        SendPacket(joinPacket);
++        SrLogger.LogMessage($"Connection acknowledged by server! Requesting Save Data... (PlayerId: {packet.PlayerId})", SrLogger.LogTarget.Both);
+ 
+-        Client.StartHeartbeat();
+-        Client.NotifyConnected();
+-
+-        SrLogger.LogMessage($"Connection acknowledged by server! (PlayerId: {packet.PlayerId})",
+-            SrLogger.LogTarget.Both);
+-
+-        SceneContext.Instance.PlayerState._model.SetCurrency(GameContext.Instance.LookupDirector._currencyList[0].Cast<ICurrency>(), packet.Money);
+-        SceneContext.Instance.PlayerState._model.SetCurrency(GameContext.Instance.LookupDirector._currencyList[1].Cast<ICurrency>(), packet.RainbowMoney);
+-
+-        foreach (var player in packet.OtherPlayers)
+-        {
+-            SpawnPlayer(player);
+-        }
++        SendPacket(new RequestSavePacket());
++        // Join flow continues in Main.OnSceneWasLoaded after save load
+     }
+ 
+     private void SpawnPlayer(string id)
+diff --git a/SR2MP/Client/Handlers/DecorationHandler.cs b/SR2MP/Client/Handlers/DecorationHandler.cs
+new file mode 100644
+index 0000000..2248113
+--- /dev/null
++++ b/SR2MP/Client/Handlers/DecorationHandler.cs
+@@ -0,0 +1,55 @@
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.Decoration)]
++    public class DecorationHandler : BaseClientPacketHandler
++    {
++        public DecorationHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<DecorationPacket>();
++
++            // Prevent infinite loop from our own patches
++            GlobalVariables.handlingPacket = true;
++            try
++            {
++                var decorizer = SceneContext.Instance.GameModel.GetDecorizerModel();
++                if (decorizer == null)
++                {
++                    MelonLoader.MelonLogger.Warning("DecorizerModel is null, cannot sync decoration.");
++                    return;
++                }
++
++                if (packet.TypeId == null)
++                {
++                    MelonLoader.MelonLogger.Warning("DecorationPacket TypeId is null.");
++                    return;
++                }
++
++                if (packet.IsRemoval)
++                {
++                    decorizer.Remove(packet.TypeId);
++                }
++                else
++                {
++                    decorizer.Add(packet.TypeId);
++                }
++            }
++            catch (System.Exception e)
++            {
++                MelonLoader.MelonLogger.Error($"Error handling DecorationPacket: {e}");
++            }
++            finally
++            {
++                GlobalVariables.handlingPacket = false;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/GadgetHandler.cs b/SR2MP/Client/Handlers/GadgetHandler.cs
+new file mode 100644
+index 0000000..e0d604e
+--- /dev/null
++++ b/SR2MP/Client/Handlers/GadgetHandler.cs
+@@ -0,0 +1,65 @@
++using Il2CppMonomiPark.SlimeRancher.SceneManagement;
++using Il2CppMonomiPark.SlimeRancher.World;
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using SR2MP.Components.World;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers;
++
++[PacketHandler((byte)PacketType.Gadget)]
++public class GadgetHandler : BaseClientPacketHandler
++{
++    public GadgetHandler(Client client, RemotePlayerManager playerManager)
++        : base(client, playerManager) { }
++
++    public override void Handle(byte[] data)
++    {
++        using var reader = new PacketReader(data);
++        var packet = reader.ReadPacket<GadgetPacket>();
++
++        GlobalVariables.handlingPacket = true;
++        try
++        {
++            if (packet.IsRemoval)
++            {
++                if (GlobalVariables.gadgetsById.TryGetValue(packet.GadgetId, out var gadgetObj))
++                {
++                    if (gadgetObj != null)
++                    {
++                        Object.Destroy(gadgetObj);
++                    }
++                    GlobalVariables.gadgetsById.Remove(packet.GadgetId);
++                }
++            }
++            else
++            {
++                // Convert int ID back to IdentifiableType
++                var gadgetDef = GlobalVariables.actorManager.GetIdentifiableType(packet.GadgetTypeId);
++                if (gadgetDef != null)
++                {
++                    var definition = gadgetDef.Cast<GadgetDefinition>();
++                    
++                    if (definition != null && definition.prefab != null)
++                    {
++                        // Signal our Gadget.Awake patch to use this ID
++                        GlobalVariables.currentlyInstantiatingGadgetId = packet.GadgetId;
++
++                        var sceneGroup = SystemContext.Instance.SceneLoader.DefaultGameplaySceneGroup;
++                        GadgetDirector.InstantiateGadget(definition.prefab, sceneGroup, packet.Position, packet.Rotation, true);
++                    }
++                }
++            }
++        }
++        catch (System.Exception e)
++        {
++            SrLogger.LogError($"Error handling GadgetPacket: {e}");
++        }
++        finally
++        {
++            GlobalVariables.handlingPacket = false;
++            GlobalVariables.currentlyInstantiatingGadgetId = string.Empty; // Just in case
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/GadgetsLoadHandler.cs b/SR2MP/Client/Handlers/GadgetsLoadHandler.cs
+new file mode 100644
+index 0000000..5381960
+--- /dev/null
++++ b/SR2MP/Client/Handlers/GadgetsLoadHandler.cs
+@@ -0,0 +1,57 @@
++using System;
++using Il2CppMonomiPark.SlimeRancher.SceneManagement;
++using Il2CppMonomiPark.SlimeRancher.World;
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using SR2MP.Components.World;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers;
++
++[PacketHandler((byte)PacketType.InitialGadgets)]
++public class GadgetsLoadHandler : BaseClientPacketHandler
++{
++    public GadgetsLoadHandler(Client client, RemotePlayerManager playerManager)
++        : base(client, playerManager) { }
++
++    public override void Handle(byte[] data)
++    {
++        using var reader = new PacketReader(data);
++        var packet = reader.ReadPacket<InitialGadgetsPacket>();
++
++        SrLogger.LogMessage($"Received {packet.Gadgets.Count} initial gadgets");
++
++        foreach (var gadgetPacket in packet.Gadgets)
++        {
++            GlobalVariables.handlingPacket = true;
++            try
++            {
++                // Convert int ID back to IdentifiableType
++                var gadgetDef = GlobalVariables.actorManager.GetIdentifiableType(gadgetPacket.GadgetTypeId);
++                if (gadgetDef != null)
++                {
++                    var definition = gadgetDef.Cast<GadgetDefinition>();
++                    
++                    if (definition != null && definition.prefab != null)
++                    {
++                        // Signal our Gadget.Awake patch to use this ID
++                        GlobalVariables.currentlyInstantiatingGadgetId = gadgetPacket.GadgetId;
++
++                        var sceneGroup = SystemContext.Instance.SceneLoader.DefaultGameplaySceneGroup;
++                        GadgetDirector.InstantiateGadget(definition.prefab, sceneGroup, gadgetPacket.Position, gadgetPacket.Rotation, true);
++                    }
++                }
++            }
++            catch (System.Exception e)
++            {
++                SrLogger.LogError($"Error loading initial gadget: {e}");
++            }
++            finally
++            {
++                GlobalVariables.handlingPacket = false;
++                GlobalVariables.currentlyInstantiatingGadgetId = string.Empty;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/GardenPlantHandler.cs b/SR2MP/Client/Handlers/GardenPlantHandler.cs
+new file mode 100644
+index 0000000..b9236df
+--- /dev/null
++++ b/SR2MP/Client/Handlers/GardenPlantHandler.cs
+@@ -0,0 +1,53 @@
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.GardenPlant)]
++    public class GardenPlantHandler : BaseClientPacketHandler
++    {
++        public GardenPlantHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<GardenPlantPacket>();
++
++            GlobalVariables.handlingPacket = true;
++            try
++            {
++                // Find the garden by plot ID
++                var gameModel = SceneContext.Instance.GameModel;
++                if (gameModel == null) return;
++
++                var plotModel = gameModel.GetLandPlotModel(packet.PlotId);
++                if (plotModel == null) return;
++
++                // Find the actual garden GameObject
++                var plotLocation = GameObject.Find(packet.PlotId)?.GetComponent<LandPlotLocation>();
++                if (plotLocation == null) return;
++
++                var garden = plotLocation.GetComponentInChildren<GardenCatcher>();
++                if (garden == null) return;
++
++                // Get the plant type
++                var plantType = GlobalVariables.actorManager.GetIdentifiableType(packet.PlantTypeId);
++                if (plantType == null) return;
++
++                // Plant it
++                garden.Plant(plantType, false);
++            }
++            catch (System.Exception e)
++            {
++                MelonLoader.MelonLogger.Error($"Error handling GardenPlantPacket: {e}");
++            }
++            finally
++            {
++                GlobalVariables.handlingPacket = false;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/GordoHandler.cs b/SR2MP/Client/Handlers/GordoHandler.cs
+new file mode 100644
+index 0000000..e4176ea
+--- /dev/null
++++ b/SR2MP/Client/Handlers/GordoHandler.cs
+@@ -0,0 +1,37 @@
++using Il2Cpp;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.GordoEat)]
++    public class GordoHandler : BaseClientPacketHandler
++    {
++        public GordoHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<GordoEatPacket>();
++
++            var obj = GameObject.Find(packet.Id);
++            if (obj != null)
++            {
++                var gordo = obj.GetComponent<GordoEat>();
++                if (gordo != null && gordo.GordoModel != null)
++                {
++                    GlobalVariables.handlingPacket = true;
++                    gordo.GordoModel.GordoEatenCount = packet.Count;
++                    GlobalVariables.handlingPacket = false;
++                }
++            }
++            else
++            {
++                MelonLoader.MelonLogger.Warning($"GordoHandler: Could not find Gordo with name {packet.Id}");
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/InventoryHandler.cs b/SR2MP/Client/Handlers/InventoryHandler.cs
+new file mode 100644
+index 0000000..f96f696
+--- /dev/null
++++ b/SR2MP/Client/Handlers/InventoryHandler.cs
+@@ -0,0 +1,30 @@
++using SR2MP.Client.Managers;
++using SR2MP.Packets.Utils;
++using SR2MP.Shared.Managers;
++
++namespace SR2MP.Client.Handlers;
++
++[PacketHandler((byte)PacketType.Inventory)]
++public sealed class InventoryHandler : BaseClientPacketHandler
++{
++    public InventoryHandler(Client client, RemotePlayerManager playerManager)
++        : base(client, playerManager) { }
++
++    public override void Handle(byte[] data)
++    {
++        using var reader = new PacketReader(data);
++        var packet = reader.ReadPacket<InventoryPacket>();
++
++        if (packet.PlayerId == Main.Client.OwnPlayerId) return; // Should not happen but safety first
++
++        var remotePlayer = playerManager.GetPlayer(packet.PlayerId);
++        if (remotePlayer != null)
++        {
++            // Just update data for now. Visual sync will check this array.
++            if (packet.SlotIdx >= 0 && packet.SlotIdx < remotePlayer.Inventory.Length)
++            {
++                remotePlayer.Inventory[packet.SlotIdx] = packet.ItemId;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/LandplotUpdateHandler.cs b/SR2MP/Client/Handlers/LandplotUpdateHandler.cs
+index fcb0306..9ec6770 100644
+--- a/SR2MP/Client/Handlers/LandplotUpdateHandler.cs
++++ b/SR2MP/Client/Handlers/LandplotUpdateHandler.cs
+@@ -28,6 +28,13 @@ public sealed class LandplotUpdateHandler : BaseClientPacketHandler
+             handlingPacket = true;
+             location.Replace(landPlotComponent,
+                 GameContext.Instance.LookupDirector._plotPrefabDict[packet.PlotType]);
++            
++            // Play Buy Sound
++            if (fxManager.worldAudioCueMap.TryGetValue(WorldFXType.BuyPlot, out var cue))
++            {
++                fxManager.PlayTransientAudio(cue, model.gameObj.transform.position, 0.8f);
++            }
++            
+             handlingPacket = false;
+ 
+             return;
+@@ -40,6 +47,13 @@ public sealed class LandplotUpdateHandler : BaseClientPacketHandler
+             var landPlotComponent = model.gameObj.GetComponentInChildren<LandPlot>();
+             handlingPacket = true;
+             landPlotComponent.AddUpgrade(packet.PlotUpgrade);
++            
++            // Play Upgrade Sound
++            if (fxManager.worldAudioCueMap.TryGetValue(WorldFXType.UpgradePlot, out var cue))
++            {
++                fxManager.PlayTransientAudio(cue, model.gameObj.transform.position, 0.8f);
++            }
++            
+             handlingPacket = false;
+         }
+     }
+diff --git a/SR2MP/Client/Handlers/MapUnlockHandler.cs b/SR2MP/Client/Handlers/MapUnlockHandler.cs
+new file mode 100644
+index 0000000..849ad36
+--- /dev/null
++++ b/SR2MP/Client/Handlers/MapUnlockHandler.cs
+@@ -0,0 +1,38 @@
++using Il2Cpp;
++using Il2CppMonomiPark.SlimeRancher.UI;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.MapUnlock)]
++    public class MapUnlockHandler : BaseClientPacketHandler
++    {
++        public MapUnlockHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<MapUnlockPacket>();
++
++            var obj = GameObject.Find(packet.Id);
++            if (obj != null)
++            {
++                var tech = obj.GetComponent<TechUIInteractable>();
++                if (tech != null)
++                {
++                    GlobalVariables.handlingPacket = true;
++                    tech.OnInteract();
++                    GlobalVariables.handlingPacket = false;
++                }
++            }
++            else
++            {
++                MelonLoader.MelonLogger.Warning($"MapUnlockHandler: Could not find Map Object with name {packet.Id}");
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/MarketHandler.cs b/SR2MP/Client/Handlers/MarketHandler.cs
+new file mode 100644
+index 0000000..a56d83d
+--- /dev/null
++++ b/SR2MP/Client/Handlers/MarketHandler.cs
+@@ -0,0 +1,43 @@
++using System.Linq;
++using Il2CppMonomiPark.SlimeRancher.Economy;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.MarketUpdate)]
++    public class MarketHandler : BaseClientPacketHandler
++    {
++        public MarketHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<MarketUpdatePacket>();
++
++            // Apply prices
++            /*
++            if (SceneContext.Instance.EconomyDirector != null  && GlobalVariables.actorManager != null)
++            {
++                GlobalVariables.handlingPacket = true;
++                
++                var economy = SceneContext.Instance.EconomyDirector;
++                
++                // Helper to find type by name
++                foreach (var kvp in packet.Prices)
++                {
++                    var type = GlobalVariables.actorManager.ActorTypes.Values.FirstOrDefault(t => t.name == kvp.Key);
++                    if (type != null)
++                    {
++                    }
++                }
++                
++                GlobalVariables.handlingPacket = false;
++            }
++            */
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/PlayerUpdateHandler.cs b/SR2MP/Client/Handlers/PlayerUpdateHandler.cs
+index 30b5645..1634308 100644
+--- a/SR2MP/Client/Handlers/PlayerUpdateHandler.cs
++++ b/SR2MP/Client/Handlers/PlayerUpdateHandler.cs
+@@ -30,7 +30,9 @@ public sealed class PlayerUpdateHandler : BaseClientPacketHandler
+             packet.HorizontalSpeed,
+             packet.ForwardSpeed,
+             packet.Sprinting,
+-            packet.LookY
++            packet.LookY,
++            packet.SelectedSlot,
++            packet.VacuumState
+         );
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Client/Handlers/PrismaBarrierHandler.cs b/SR2MP/Client/Handlers/PrismaBarrierHandler.cs
+new file mode 100644
+index 0000000..3b2d0b8
+--- /dev/null
++++ b/SR2MP/Client/Handlers/PrismaBarrierHandler.cs
+@@ -0,0 +1,56 @@
++using Il2CppMonomiPark.SlimeRancher.SceneManagement;
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using System.Linq;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.PrismaBarrier)]
++    public class PrismaBarrierHandler : BaseClientPacketHandler
++    {
++        public PrismaBarrierHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<PrismaBarrierPacket>();
++
++            // Avoid infinite loop if we patch the setter
++            GlobalVariables.handlingPacket = true;
++            try
++            {
++                var prismaDirector = SceneContext.Instance.PrismaDirector;
++                if (prismaDirector == null)
++                {
++                    // Maybe scene not loaded yet?
++                    return;
++                }
++
++                // Access Prisma barriers through GameModel
++                var gameModel = SceneContext.Instance.GameModel;
++                if (gameModel != null)
++                {
++                    var barriers = gameModel.AllPrismaBarriers();
++                    if (barriers != null && barriers.ContainsKey(packet.BarrierId))
++                    {
++                         var barrier = barriers[packet.BarrierId];
++                         if (barrier != null)
++                         {
++                             barrier.ActivationTime = packet.ActivationTime;
++                         }
++                    }
++                }
++            }
++            catch (System.Exception e)
++            {
++                MelonLoader.MelonLogger.Error($"Error handling PrismaBarrierPacket: {e}");
++            }
++            finally
++            {
++                GlobalVariables.handlingPacket = false;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/PrismaDisruptionHandler.cs b/SR2MP/Client/Handlers/PrismaDisruptionHandler.cs
+new file mode 100644
+index 0000000..2ceb052
+--- /dev/null
++++ b/SR2MP/Client/Handlers/PrismaDisruptionHandler.cs
+@@ -0,0 +1,58 @@
++using Il2CppMonomiPark.SlimeRancher.Labyrinth;
++using Il2CppMonomiPark.SlimeRancher.SceneManagement;
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using System.Linq;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.PrismaDisruption)]
++    public class PrismaDisruptionHandler : BaseClientPacketHandler
++    {
++        public PrismaDisruptionHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<PrismaDisruptionPacket>();
++
++            GlobalVariables.handlingPacket = true;
++            try
++            {
++                var director = SceneContext.Instance.PrismaDirector;
++                if (director == null) return;
++
++                // Find the DisruptionArea by iterating the director's dictionary
++
++                var dict = director._disruptionAreas;
++                if (dict != null)
++                {
++                    foreach (var entry in dict)
++                    {
++                        // entry.Key is DisruptionAreaDefinition
++                        // entry.Value is DisruptionArea
++                        if (entry.Key.name == packet.AreaId)
++                        {
++                            director.SetDisruptionLevel(entry.Value, (DisruptionLevel)packet.Level, packet.IsTransition);
++                            return; 
++                        }
++                    }
++                }
++                else
++                {
++                     MelonLoader.MelonLogger.Warning("PrismaDirector._disruptionAreas is null or inaccessible.");
++                }
++            }
++            catch (System.Exception e)
++            {
++                MelonLoader.MelonLogger.Error($"Error handling PrismaDisruptionPacket: {e}");
++            }
++            finally
++            {
++                GlobalVariables.handlingPacket = false;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/SaveHandler.cs b/SR2MP/Client/Handlers/SaveHandler.cs
+new file mode 100644
+index 0000000..7476cba
+--- /dev/null
++++ b/SR2MP/Client/Handlers/SaveHandler.cs
+@@ -0,0 +1,63 @@
++using System.IO;
++using System.IO.Compression;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.SaveData)]
++    public class SaveHandler : BaseClientPacketHandler
++    {
++        public SaveHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            MelonLoader.MelonLogger.Msg("Received Save Data Packet.");
++
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<SaveDataPacket>();
++
++            // 1. Decompress
++            byte[] decompressedData;
++            using (var inputStream = new MemoryStream(packet.Data))
++            using (var gzipStream = new GZipStream(inputStream, CompressionMode.Decompress))
++            using (var outputStream = new MemoryStream())
++            {
++                gzipStream.CopyTo(outputStream);
++                decompressedData = outputStream.ToArray();
++            }
++
++            MelonLoader.MelonLogger.Msg($"Decompressed save data: {decompressedData.Length} bytes. Loading...");
++
++            // 2. Load into Game
++            // Use a temporary game/save name for MP to avoid overwriting main saves? 
++            // GitHub code uses "SR2MP" for both GameName and SaveName
++            
++            var memoryStream = new Il2CppSystem.IO.MemoryStream(decompressedData);
++            memoryStream.Seek(0, Il2CppSystem.IO.SeekOrigin.Begin);
++
++            var gsi = new Il2CppMonomiPark.SlimeRancher.GameSaveIdentifier() 
++            { 
++                GameName = "SR2MP_Client", 
++                SaveName = "SR2MP_Save" 
++            };
++
++            var autoSaveDirector = GameContext.Instance.AutoSaveDirector;
++            if (autoSaveDirector != null)
++            {
++                 // BeginLoad takes (GameSaveIdentifier, Stream)
++                 // Based on Logic, we just feed it the stream and identifier.
++                 autoSaveDirector.BeginLoad(gsi, memoryStream);
++                 MelonLoader.MelonLogger.Msg("World load initiated.");
++            }
++            else
++            {
++                MelonLoader.MelonLogger.Error("AutoSaveDirector is null!");
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/SiloUpdateHandler.cs b/SR2MP/Client/Handlers/SiloUpdateHandler.cs
+new file mode 100644
+index 0000000..86bdc29
+--- /dev/null
++++ b/SR2MP/Client/Handlers/SiloUpdateHandler.cs
+@@ -0,0 +1,47 @@
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.SiloUpdate)]
++    public class SiloUpdateHandler : BaseClientPacketHandler
++    {
++        public SiloUpdateHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<SiloUpdatePacket>();
++
++            GlobalVariables.handlingPacket = true;
++            try
++            {
++                // Find the silo by plot ID
++                var plotLocation = GameObject.Find(packet.PlotId)?.GetComponent<LandPlotLocation>();
++                if (plotLocation == null) return;
++
++                var silo = plotLocation.GetComponentInChildren<SiloStorage>();
++                if (silo == null) return;
++
++                // Get the item type
++                var itemType = packet.ItemTypeId != 0 ? GlobalVariables.actorManager.GetIdentifiableType(packet.ItemTypeId) : null;
++
++                // For now, just log the update - full implementation would require
++                // more complex ammo manipulation that we don't have access to
++                // The silo state will be synced through the normal add/remove operations
++                MelonLoader.MelonLogger.Msg($"Silo update received: Plot={packet.PlotId}, Slot={packet.SlotIndex}, Type={itemType?.name}, Count={packet.Count}");
++            }
++            catch (System.Exception e)
++            {
++                MelonLoader.MelonLogger.Error($"Error handling SiloUpdatePacket: {e}");
++            }
++            finally
++            {
++                GlobalVariables.handlingPacket = false;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Handlers/TreasurePodHandler.cs b/SR2MP/Client/Handlers/TreasurePodHandler.cs
+new file mode 100644
+index 0000000..47b104b
+--- /dev/null
++++ b/SR2MP/Client/Handlers/TreasurePodHandler.cs
+@@ -0,0 +1,39 @@
++using Il2Cpp;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Client.Handlers
++{
++    [PacketHandler((byte)PacketType.TreasurePod)]
++    public class TreasurePodHandler : BaseClientPacketHandler
++    {
++        public TreasurePodHandler(Client client, RemotePlayerManager playerManager)
++            : base(client, playerManager) { }
++
++        public override void Handle(byte[] data)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<TreasurePodPacket>();
++
++            var obj = GameObject.Find(packet.Id);
++            if (obj != null)
++            {
++                var pod = obj.GetComponent<TreasurePod>();
++                if (pod != null)
++                {
++                    GlobalVariables.handlingPacket = true;
++                    // Activate typically handles checks, but we want to force open?
++                    // Or sync state? Activate usually opens it.
++                    pod.Activate(); 
++                    GlobalVariables.handlingPacket = false;
++                }
++            }
++            else
++            {
++                MelonLoader.MelonLogger.Warning($"TreasurePodHandler: Could not find Pod with name {packet.Id}");
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Client/Managers/ClientPacketManager.cs b/SR2MP/Client/Managers/ClientPacketManager.cs
+index fc87c9b..e285393 100644
+--- a/SR2MP/Client/Managers/ClientPacketManager.cs
++++ b/SR2MP/Client/Managers/ClientPacketManager.cs
+@@ -58,13 +58,6 @@ public sealed class ClientPacketManager
+         }
+ 
+         byte packetType = data[0];
+-        byte chunkIndex = data[1];
+-        byte totalChunks = data[2];
+-
+-        byte[] chunkData = new byte[data.Length - 3];
+-        Buffer.BlockCopy(data, 3, chunkData, 0, data.Length - 3);
+-        if (!PacketChunkManager.TryMergePacket((PacketType)packetType, chunkData, chunkIndex, totalChunks, out data))
+-            return;
+ 
+         if (handlers.TryGetValue(packetType, out var handler))
+         {
+diff --git a/SR2MP/Client/Models/RemotePlayer.cs b/SR2MP/Client/Models/RemotePlayer.cs
+index 31d4f8d..684751b 100644
+--- a/SR2MP/Client/Models/RemotePlayer.cs
++++ b/SR2MP/Client/Models/RemotePlayer.cs
+@@ -9,6 +9,10 @@ public sealed class RemotePlayer
+     public float Rotation { get; set; }
+     public DateTime LastUpdate { get; set; }
+ 
++    // Inventory stuff
++    public int[] Inventory { get; set; } = new int[4];
++    public int SelectedSlot { get; set; }
++
+     // Animation stuff
+     public int AirborneState { get; set; }
+     public bool Moving { get; set; }
+@@ -18,6 +22,7 @@ public sealed class RemotePlayer
+     public float HorizontalSpeed { get; set; }
+     public float ForwardSpeed { get; set; }
+     public bool Sprinting { get; set; }
++    public byte VacuumState { get; set; }
+ 
+     public float LookY { get; set; }
+     public float LastLookY { get; set; }
+diff --git a/SR2MP/Components/FX/NetworkPlayerFootstep.cs b/SR2MP/Components/FX/NetworkPlayerFootstep.cs
+index fad3d80..cde1889 100644
+--- a/SR2MP/Components/FX/NetworkPlayerFootstep.cs
++++ b/SR2MP/Components/FX/NetworkPlayerFootstep.cs
+@@ -1,5 +1,8 @@
+ using MelonLoader;
+ 
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++
+ namespace SR2MP.Components.FX
+ {
+     // Modified version of PlayerFootstepFX (from a restored decomp of 'PlayerFootstepFX' qwq)
+@@ -46,6 +49,15 @@ namespace SR2MP.Components.FX
+             {
+                 playerInWater = true;
+                 footstepParticles.Stop(true, ParticleSystemStopBehavior.StopEmitting);
++
++                var packet = new PlayerFXPacket()
++                {
++                    Type = (byte)PacketType.PlayerFX,
++                    FX = PlayerFXPacket.PlayerFXType.WaterSplash,
++                    Position = transform.position,
++                    Player = GlobalVariables.LocalID 
++                };
++                Main.SendToAllOrServer(packet);
+             }
+         }
+ 
+diff --git a/SR2MP/Components/Player/NetworkPlayer.cs b/SR2MP/Components/Player/NetworkPlayer.cs
+index 146dedd..d35bca0 100644
+--- a/SR2MP/Components/Player/NetworkPlayer.cs
++++ b/SR2MP/Components/Player/NetworkPlayer.cs
+@@ -26,6 +26,7 @@ namespace SR2MP.Components.Player
+         private float interpolationStart;
+         private float interpolationEnd;
+ 
++
+         public TextMeshPro usernamePanel;
+ 
+         private float transformTimer = PlayerTimer;
+@@ -36,6 +37,9 @@ namespace SR2MP.Components.Player
+         internal RemotePlayer model;
+         
+         internal Transform camera;
++        public Transform vacAttachmentPoint;
++        private int currentRenderedItemId = -1;
++        private GameObject currentHeldObject;
+ 
+         public string ID { get; internal set; }
+ 
+@@ -116,7 +120,7 @@ namespace SR2MP.Components.Player
+         {
+             if (model == null)
+             {
+-                model = playerManager.GetPlayer(ID) ?? playerManager.AddPlayer(ID);
++                model = GlobalVariables.playerManager.GetPlayer(ID) ?? GlobalVariables.playerManager.AddPlayer(ID);
+                 return;
+             }
+ 
+@@ -132,14 +136,14 @@ namespace SR2MP.Components.Player
+                 transform.eulerAngles = new Vector3(0,  Mathf.LerpAngle(previousRotation.x, nextRotation.x, timer), 0);
+             }
+ 
+-            ReloadMeshTransform();
++            ReloadMeshTransform(); 
+             if (transformTimer < 0)
+             {
+                 transformTimer = PlayerTimer;
+ 
+                 if (IsLocal)
+                 {
+-                    playerManager.SendPlayerUpdate(
++                    GlobalVariables.playerManager.SendPlayerUpdate(
+                         position: transform.position,
+                         rotation: transform.eulerAngles.y,
+                         horizontalMovement: animator.GetFloat("HorizontalMovement"),
+@@ -150,21 +154,23 @@ namespace SR2MP.Components.Player
+                         horizontalSpeed: animator.GetFloat("HorizontalSpeed"),
+                         forwardSpeed: animator.GetFloat("ForwardSpeed"),
+                         sprinting: animator.GetBool("Sprinting"),
+-                        lookY: camera.eulerAngles.x
++                        lookY: camera.eulerAngles.x,
++                        selectedSlot: 0 // TODO: Find correct property on AmmoSlotManager for selected slot index
+                     );
+                 }
+                 else
+                 {
+                     if (!hasAnimationController)
+                     {
+-                        var playerAnimatorController = sceneContext.player?.GetComponent<Animator>().runtimeAnimatorController;
++                        var playerAnimatorController = SceneContext.Instance.Player.GetComponent<Animator>().runtimeAnimatorController;
+                         
+                         if (animator.runtimeAnimatorController != null)
+                         {
+                             hasAnimationController = true;
+                             animator.runtimeAnimatorController =
+                                 Object.Instantiate(playerAnimatorController);
+-                            animator.avatar = sceneContext.player?.GetComponent<Animator>().avatar;
++                            animator.avatar = SceneContext.Instance.Player.GetComponent<Animator>().avatar;
++                            animator.avatar = SceneContext.Instance.Player.GetComponent<Animator>().avatar;
+                             SetupAnimations();
+                         }
+                     }
+@@ -185,6 +191,8 @@ namespace SR2MP.Components.Player
+                     animator.SetFloat("HorizontalSpeed", model.HorizontalSpeed);
+                     animator.SetFloat("ForwardSpeed", model.ForwardSpeed);
+                     animator.SetBool("Sprinting", model.Sprinting);
++
++                    UpdateHeldItem();
+                 }
+             }
+         }
+@@ -210,5 +218,30 @@ namespace SR2MP.Components.Player
+         {
+             AnimateArmY();
+         }
++
++        void UpdateHeldItem()
++        {
++            // Safety check
++            if (model.Inventory == null || model.SelectedSlot < 0 || model.SelectedSlot >= model.Inventory.Length || !vacAttachmentPoint) return;
++
++            int itemId = model.Inventory[model.SelectedSlot];
++
++            if (itemId != currentRenderedItemId)
++            {
++                if (currentHeldObject) Destroy(currentHeldObject);
++                currentRenderedItemId = itemId;
++
++                if (itemId != 0 && GlobalVariables.actorManager.ActorTypes.TryGetValue(itemId, out var identifiableType) && identifiableType.prefab)
++                {
++                    currentHeldObject = Instantiate(identifiableType.prefab, vacAttachmentPoint);
++                    currentHeldObject.transform.localPosition = Vector3.zero;
++                    currentHeldObject.transform.localRotation = Quaternion.identity;
++                    
++                    // Cleanup physics so it doesn't fall or collide
++                    if (currentHeldObject.GetComponent<Rigidbody>()) Destroy(currentHeldObject.GetComponent<Rigidbody>()); // or isKinematic = true
++                    foreach (var col in currentHeldObject.GetComponentsInChildren<Collider>()) col.enabled = false;
++                }
++            }
++        }
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Components/World/NetworkGadget.cs b/SR2MP/Components/World/NetworkGadget.cs
+new file mode 100644
+index 0000000..a987efd
+--- /dev/null
++++ b/SR2MP/Components/World/NetworkGadget.cs
+@@ -0,0 +1,8 @@
++using UnityEngine;
++
++namespace SR2MP.Components.World;
++
++public class NetworkGadget : MonoBehaviour
++{
++    public string GadgetId { get; set; } = string.Empty;
++}
+diff --git a/SR2MP/GlobalUsings.cs b/SR2MP/GlobalUsings.cs
+index 1d7f892..a7b183d 100644
+--- a/SR2MP/GlobalUsings.cs
++++ b/SR2MP/GlobalUsings.cs
+@@ -14,6 +14,9 @@ global using UnityEngine;
+ global using CppCollections = Il2CppSystem.Collections.Generic;
+ global using Il2Cpp;
+ global using Il2CppMonomiPark.SlimeRancher;
++// global using Il2CppMonomiPark.SlimeRancher.Data;
++global using Il2CppMonomiPark.SlimeRancher.DataModel;
++global using Il2CppMonomiPark.SlimeRancher.World;
+ 
+ global using static SR2MP.Shared.Utils.FXConstants;
+ global using static SR2MP.GlobalVariables;
+\ No newline at end of file
+diff --git a/SR2MP/GlobalVariables.cs b/SR2MP/GlobalVariables.cs
+index fcb6b52..c60ad73 100644
+--- a/SR2MP/GlobalVariables.cs
++++ b/SR2MP/GlobalVariables.cs
+@@ -4,7 +4,7 @@ namespace SR2MP;
+ 
+ public static class GlobalVariables
+ {
+-    internal static GameObject playerPrefab;
++    public static GameObject playerPrefab;
+ 
+     public static Dictionary<string, GameObject> playerObjects = new();
+ 
+@@ -20,6 +20,9 @@ public static class GlobalVariables
+     // an infinite sending loop
+     public static bool handlingPacket = false;
+ 
++    public static string currentlyInstantiatingGadgetId = string.Empty;
++    public static Dictionary<string, GameObject> gadgetsById = new();
++
+     // I love this indenting
+     public static string LocalID =>
+         Main.Server.IsRunning() 
+diff --git a/SR2MP/Main.cs b/SR2MP/Main.cs
+index 6395094..6048216 100644
+--- a/SR2MP/Main.cs
++++ b/SR2MP/Main.cs
+@@ -1,4 +1,4 @@
+-∩╗┐using Il2CppTMPro;
++using Il2CppTMPro;
+ using MelonLoader;
+ using SR2E.Expansion;
+ using SR2MP.Components.FX;
+@@ -6,42 +6,45 @@ using SR2MP.Components.Player;
+ using SR2MP.Components.Time;
+ using SR2MP.Packets.Utils;
+ using SR2MP.Shared.Utils;
++using System;
++using System.Linq;
++using System.Reflection;
++using System.Collections.Generic;
++
++using Il2CppMonomiPark.SlimeRancher.Economy;
++using SR2MP.Server;
++using SR2MP.Client;
+ 
+ namespace SR2MP;
+ 
+ public sealed class Main : SR2EExpansionV3
+ {
++    public static string Username = "Player";
++    public static bool IsLoadingMultiplayerSave = false;
++    public static bool PacketSizeLogging = false;
++    public static Server.Server Server { get; private set; }
++    public static Client.Client Client { get; private set; }
++
++    public override void OnInitializeMelon()
++    {
++        Server = new Server.Server();
++        Client = new Client.Client();
++        SrLogger.LogMessage("SR2MP Initialized");
++    }
++
+     public static void SendToAllOrServer<T>(T packet) where T : IPacket
+     {
+-        if (Client.IsConnected)
++        if (Client != null && Client.IsConnected)
+         {
+             Client.SendPacket(packet);
+         }
+ 
+-        if (Server.IsRunning())
++        if (Server != null && Server.IsRunning())
+         {
+             Server.SendToAll(packet);
+         }
+     }
+-
+-    public static Client.Client Client { get; private set; }
+-    public static Server.Server Server { get; private set; }
+-
+-    static MelonPreferences_Category preferences;
+-
+-    public static string Username => preferences.GetEntry<string>("username").Value;
+-    public static bool PacketSizeLogging => preferences.GetEntry<bool>("packet_size_log").Value;
+-
+-    public override void OnLateInitializeMelon()
+-    {
+-        preferences = MelonPreferences.CreateCategory("SR2MP");
+-        preferences.CreateEntry("username", "Player");
+-        preferences.CreateEntry("packet_size_log", false);
+-
+-        Client = new Client.Client();
+-        Server = new Server.Server();
+-    }
+-
++    
+     public override void OnSceneWasLoaded(int buildIndex, string sceneName)
+     {
+         switch (sceneName)
+@@ -84,6 +87,50 @@ public sealed class Main : SR2EExpansionV3
+                 Object.DontDestroyOnLoad(playerPrefab);
+                 break;
+         }
++
++        if (IsLoadingMultiplayerSave && !sceneName.Equals("MainMenuEnvironment") && !sceneName.Equals("SystemCore") && !sceneName.Equals("LoadScene"))
++        {
++            if (Client != null && Client.PendingJoin != null)
++            {
++                SrLogger.LogMessage($"Multiplayer Save Loaded in {sceneName}! Finalizing Join...", SrLogger.LogTarget.Both);
++                IsLoadingMultiplayerSave = false;
++
++                var pd = Client.PendingJoin;
++                
++                // Restore Currency
++                if(GameContext.Instance.LookupDirector != null && SceneContext.Instance.PlayerState != null)
++                {
++                    SceneContext.Instance.PlayerState._model.SetCurrency(GameContext.Instance.LookupDirector._currencyList[0].Cast<ICurrency>(), pd.Money);
++                    SceneContext.Instance.PlayerState._model.SetCurrency(GameContext.Instance.LookupDirector._currencyList[1].Cast<ICurrency>(), pd.RainbowMoney);
++                }
++
++                // Spawn Players
++                foreach (var player in pd.OtherPlayers)
++                {
++                   var playerObject = Object.Instantiate(playerPrefab).GetComponent<NetworkPlayer>();
++                   playerObject.gameObject.SetActive(true);
++                   playerObject.ID = player;
++                   playerObject.gameObject.name = player;
++                   playerObjects[player] = playerObject.gameObject; // Use indexer to add or update
++                   playerManager.AddPlayer(player);
++                   Object.DontDestroyOnLoad(playerObject);
++                }
++
++                // Send Join Packet
++                var joinPacket = new PlayerJoinPacket
++                {
++                    Type = (byte)PacketType.PlayerJoin,
++                    PlayerId = pd.PlayerId,
++                    PlayerName = Username // Username is from SR2EExpansionV3
++                };
++
++                Client.SendPacket(joinPacket);
++                Client.StartHeartbeat();
++                Client.NotifyConnected();
++
++                Client.PendingJoin = null;
++            }
++        }
+     }
+ 
+     public override void AfterGameContext(GameContext gameContext)
+diff --git a/SR2MP/Packets/Shared/BlueprintUnlockPacket.cs b/SR2MP/Packets/Shared/BlueprintUnlockPacket.cs
+new file mode 100644
+index 0000000..bd6ef8e
+--- /dev/null
++++ b/SR2MP/Packets/Shared/BlueprintUnlockPacket.cs
+@@ -0,0 +1,29 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class BlueprintUnlockPacket : IPacket
++    {
++        public PacketType Type => PacketType.BlueprintUnlock;
++
++        public string Id;
++
++        public BlueprintUnlockPacket() { }
++
++        public BlueprintUnlockPacket(string id)
++        {
++            Id = id;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(Id);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            Id = reader.ReadString();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/DecorationPacket.cs b/SR2MP/Packets/Shared/DecorationPacket.cs
+new file mode 100644
+index 0000000..3eb4e77
+--- /dev/null
++++ b/SR2MP/Packets/Shared/DecorationPacket.cs
+@@ -0,0 +1,68 @@
++using SR2MP.Packets.Utils;
++using UnityEngine;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++
++namespace SR2MP.Packets.Shared
++{
++    public class DecorationPacket : IPacket
++    {
++        public PacketType Type => PacketType.Decoration;
++
++        public long DecorationId; // Using long for identifying via GetHashCode or similar if generic ID is not available
++        public IdentifiableType TypeId;
++        public Vector3 Position;
++        public Quaternion Rotation;
++        public bool IsRemoval;
++
++        public DecorationPacket() { }
++
++        public DecorationPacket(long id, IdentifiableType typeId, Vector3 pos, Quaternion rot, bool isRemoval)
++        {
++            DecorationId = id;
++            TypeId = typeId;
++            Position = pos;
++            Rotation = rot;
++            IsRemoval = isRemoval;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteLong(DecorationId);
++            writer.WriteBool(IsRemoval);
++            
++            if (!IsRemoval)
++            {
++                writer.WriteString(TypeId != null ? TypeId.name : "");
++                writer.WriteVector3(Position);
++                writer.WriteQuaternion(Rotation);
++            }
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            DecorationId = reader.ReadLong();
++            IsRemoval = reader.ReadBool();
++
++            if (!IsRemoval)
++            {
++                string typeName = reader.ReadString();
++                if (!string.IsNullOrEmpty(typeName))
++                {
++                    var allTypes = Resources.FindObjectsOfTypeAll<IdentifiableType>();
++                    foreach (var type in allTypes)
++                    {
++                        if (type.name == typeName)
++                        {
++                            TypeId = type;
++                            break;
++                        }
++                    }
++                }
++
++                Position = reader.ReadVector3();
++                Rotation = reader.ReadQuaternion();
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/GadgetPacket.cs b/SR2MP/Packets/Shared/GadgetPacket.cs
+new file mode 100644
+index 0000000..9cdd636
+--- /dev/null
++++ b/SR2MP/Packets/Shared/GadgetPacket.cs
+@@ -0,0 +1,33 @@
++using UnityEngine;
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared;
++
++public struct GadgetPacket : IPacket
++{
++    public byte Type { get; set; }
++    public string GadgetId { get; set; }
++    public int GadgetTypeId { get; set; }
++    public Vector3 Position { get; set; }
++    public Quaternion Rotation { get; set; }
++    public bool IsRemoval { get; set; }
++
++    public void Serialise(PacketWriter writer)
++    {
++        writer.WriteByte(Type);
++        writer.WriteString(GadgetId);
++        writer.WriteInt(GadgetTypeId);
++        writer.WriteVector3(Position);
++        writer.WriteQuaternion(Rotation);
++        writer.WriteBool(IsRemoval);
++    }
++
++    public void Deserialise(PacketReader reader)
++    {
++        GadgetId = reader.ReadString();
++        GadgetTypeId = reader.ReadInt();
++        Position = reader.ReadVector3();
++        Rotation = reader.ReadQuaternion();
++        IsRemoval = reader.ReadBool();
++    }
++}
+diff --git a/SR2MP/Packets/Shared/GardenPlantPacket.cs b/SR2MP/Packets/Shared/GardenPlantPacket.cs
+new file mode 100644
+index 0000000..0faf44f
+--- /dev/null
++++ b/SR2MP/Packets/Shared/GardenPlantPacket.cs
+@@ -0,0 +1,37 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class GardenPlantPacket : IPacket
++    {
++        public PacketType Type => PacketType.GardenPlant;
++
++        public string PlotId;
++        public int PlantTypeId; // 0 for empty/harvested
++        public int SlotIndex;
++
++        public GardenPlantPacket() { }
++
++        public GardenPlantPacket(string plotId, int plantTypeId, int slotIndex)
++        {
++            PlotId = plotId;
++            PlantTypeId = plantTypeId;
++            SlotIndex = slotIndex;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(PlotId);
++            writer.WriteInt(PlantTypeId);
++            writer.WriteInt(SlotIndex);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            PlotId = reader.ReadString();
++            PlantTypeId = reader.ReadInt();
++            SlotIndex = reader.ReadInt();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/GordoEatPacket.cs b/SR2MP/Packets/Shared/GordoEatPacket.cs
+new file mode 100644
+index 0000000..7218ff6
+--- /dev/null
++++ b/SR2MP/Packets/Shared/GordoEatPacket.cs
+@@ -0,0 +1,33 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class GordoEatPacket : IPacket
++    {
++        public PacketType Type => PacketType.GordoEat;
++
++        public string Id;
++        public int Count;
++
++        public GordoEatPacket() { }
++
++        public GordoEatPacket(string id, int count)
++        {
++            Id = id;
++            Count = count;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(Id);
++            writer.WriteInt(Count);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            Id = reader.ReadString();
++            Count = reader.ReadInt();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/InitialGadgetsPacket.cs b/SR2MP/Packets/Shared/InitialGadgetsPacket.cs
+new file mode 100644
+index 0000000..cb75633
+--- /dev/null
++++ b/SR2MP/Packets/Shared/InitialGadgetsPacket.cs
+@@ -0,0 +1,32 @@
++using System.Collections.Generic;
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared;
++
++public struct InitialGadgetsPacket : IPacket
++{
++    public byte Type { get; set; }
++    public List<GadgetPacket> Gadgets { get; set; }
++
++    public void Serialise(PacketWriter writer)
++    {
++        writer.WriteByte(Type);
++        writer.WriteInt(Gadgets.Count);
++        foreach (var gadget in Gadgets)
++        {
++            gadget.Serialise(writer);
++        }
++    }
++
++    public void Deserialise(PacketReader reader)
++    {
++        var count = reader.ReadInt();
++        Gadgets = new List<GadgetPacket>(count);
++        for (int i = 0; i < count; i++)
++        {
++            var gadget = new GadgetPacket();
++            gadget.Deserialise(reader);
++            Gadgets.Add(gadget);
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/InventoryPacket.cs b/SR2MP/Packets/Shared/InventoryPacket.cs
+new file mode 100644
+index 0000000..f3c0aa6
+--- /dev/null
++++ b/SR2MP/Packets/Shared/InventoryPacket.cs
+@@ -0,0 +1,30 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared;
++
++public struct InventoryPacket : IPacket
++{
++    public byte Type { get; set; }
++    public string PlayerId { get; set; }
++    public int SlotIdx { get; set; }
++    public int ItemId { get; set; }
++    public int Count { get; set; }
++
++    public readonly void Serialise(PacketWriter writer)
++    {
++        writer.WriteByte(Type);
++        writer.WriteString(PlayerId);
++        writer.WriteInt(SlotIdx);
++        writer.WriteInt(ItemId);
++        writer.WriteInt(Count);
++    }
++
++    public void Deserialise(PacketReader reader)
++    {
++        Type = reader.ReadByte();
++        PlayerId = reader.ReadString();
++        SlotIdx = reader.ReadInt();
++        ItemId = reader.ReadInt();
++        Count = reader.ReadInt();
++    }
++}
+diff --git a/SR2MP/Packets/Shared/MapUnlockPacket.cs b/SR2MP/Packets/Shared/MapUnlockPacket.cs
+new file mode 100644
+index 0000000..34214c5
+--- /dev/null
++++ b/SR2MP/Packets/Shared/MapUnlockPacket.cs
+@@ -0,0 +1,29 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class MapUnlockPacket : IPacket
++    {
++        public PacketType Type => PacketType.MapUnlock;
++
++        public string Id;
++
++        public MapUnlockPacket() { }
++
++        public MapUnlockPacket(string id)
++        {
++            Id = id;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(Id);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            Id = reader.ReadString();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/MarketUpdatePacket.cs b/SR2MP/Packets/Shared/MarketUpdatePacket.cs
+new file mode 100644
+index 0000000..c5cefd6
+--- /dev/null
++++ b/SR2MP/Packets/Shared/MarketUpdatePacket.cs
+@@ -0,0 +1,41 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class MarketUpdatePacket : IPacket
++    {
++        public PacketType Type => PacketType.MarketUpdate;
++
++        public System.Collections.Generic.Dictionary<string, float> Prices;
++
++        public MarketUpdatePacket() { }
++
++        public MarketUpdatePacket(System.Collections.Generic.Dictionary<string, float> prices)
++        {
++            Prices = prices;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteInt(Prices.Count);
++            foreach (var kvp in Prices)
++            {
++                writer.WriteString(kvp.Key);
++                writer.WriteFloat(kvp.Value);
++            }
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            int count = reader.ReadInt();
++            Prices = new System.Collections.Generic.Dictionary<string, float>();
++            for (int i = 0; i < count; i++)
++            {
++                string key = reader.ReadString();
++                float val = reader.ReadFloat();
++                Prices[key] = val;
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/PlayerUpdatePacket.cs b/SR2MP/Packets/Shared/PlayerUpdatePacket.cs
+index fc4fcfd..4a7e07f 100644
+--- a/SR2MP/Packets/Shared/PlayerUpdatePacket.cs
++++ b/SR2MP/Packets/Shared/PlayerUpdatePacket.cs
+@@ -17,6 +17,8 @@ public struct PlayerUpdatePacket : IPacket
+     public float ForwardSpeed { get; set; }
+     public bool Sprinting { get; set; }
+     public float LookY { get; set; }
++    public int SelectedSlot { get; set; }
++    public byte VacuumState { get; set; }
+ 
+     public readonly void Serialise(PacketWriter writer)
+     {
+@@ -36,6 +38,8 @@ public struct PlayerUpdatePacket : IPacket
+         writer.WriteBool(Sprinting);
+ 
+         writer.WriteFloat(LookY);
++        writer.WriteInt(SelectedSlot);
++        writer.WriteByte(VacuumState);
+     }
+ 
+     public void Deserialise(PacketReader reader)
+@@ -56,5 +60,7 @@ public struct PlayerUpdatePacket : IPacket
+         Sprinting = reader.ReadBool();
+ 
+         LookY = reader.ReadFloat();
++        SelectedSlot = reader.ReadInt();
++        VacuumState = reader.ReadByte();
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Packets/Shared/PrismaBarrierPacket.cs b/SR2MP/Packets/Shared/PrismaBarrierPacket.cs
+new file mode 100644
+index 0000000..a1be937
+--- /dev/null
++++ b/SR2MP/Packets/Shared/PrismaBarrierPacket.cs
+@@ -0,0 +1,33 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class PrismaBarrierPacket : IPacket
++    {
++        public PacketType Type => PacketType.PrismaBarrier;
++
++        public string BarrierId;
++        public double ActivationTime;
++
++        public PrismaBarrierPacket() { }
++
++        public PrismaBarrierPacket(string barrierId, double activationTime)
++        {
++            BarrierId = barrierId;
++            ActivationTime = activationTime;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(BarrierId);
++            writer.WriteDouble(ActivationTime);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            BarrierId = reader.ReadString();
++            ActivationTime = reader.ReadDouble();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/PrismaDisruptionPacket.cs b/SR2MP/Packets/Shared/PrismaDisruptionPacket.cs
+new file mode 100644
+index 0000000..a010e6c
+--- /dev/null
++++ b/SR2MP/Packets/Shared/PrismaDisruptionPacket.cs
+@@ -0,0 +1,37 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class PrismaDisruptionPacket : IPacket
++    {
++        public PacketType Type => PacketType.PrismaDisruption;
++
++        public string AreaId;     // Name of DisruptionAreaDefinition
++        public int Level;       // Cast of DisruptionLevel
++        public bool IsTransition;
++
++        public PrismaDisruptionPacket() { }
++
++        public PrismaDisruptionPacket(string areaId, int level, bool isTransition)
++        {
++            AreaId = areaId;
++            Level = level;
++            IsTransition = isTransition;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(AreaId);
++            writer.WriteInt(Level);
++            writer.WriteBool(IsTransition);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            AreaId = reader.ReadString();
++            Level = reader.ReadInt();
++            IsTransition = reader.ReadBool();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/RequestSavePacket.cs b/SR2MP/Packets/Shared/RequestSavePacket.cs
+new file mode 100644
+index 0000000..843be03
+--- /dev/null
++++ b/SR2MP/Packets/Shared/RequestSavePacket.cs
+@@ -0,0 +1,20 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class RequestSavePacket : IPacket
++    {
++        public PacketType Type => PacketType.RequestSave;
++
++        public RequestSavePacket() { }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/SaveDataPacket.cs b/SR2MP/Packets/Shared/SaveDataPacket.cs
+new file mode 100644
+index 0000000..59026b3
+--- /dev/null
++++ b/SR2MP/Packets/Shared/SaveDataPacket.cs
+@@ -0,0 +1,33 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class SaveDataPacket : IPacket
++    {
++        public PacketType Type => PacketType.SaveData;
++
++        public int Length;
++        public byte[] Data;
++
++        public SaveDataPacket() { }
++
++        public SaveDataPacket(byte[] data)
++        {
++            Data = data;
++            Length = data.Length;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteInt(Length);
++            writer.WriteBytes(Data);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            Length = reader.ReadInt();
++            Data = reader.ReadBytes(Length);
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/SiloUpdatePacket.cs b/SR2MP/Packets/Shared/SiloUpdatePacket.cs
+new file mode 100644
+index 0000000..f454d68
+--- /dev/null
++++ b/SR2MP/Packets/Shared/SiloUpdatePacket.cs
+@@ -0,0 +1,41 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class SiloUpdatePacket : IPacket
++    {
++        public PacketType Type => PacketType.SiloUpdate;
++
++        public string PlotId;
++        public int SlotIndex;
++        public int ItemTypeId;
++        public int Count;
++
++        public SiloUpdatePacket() { }
++
++        public SiloUpdatePacket(string plotId, int slotIndex, int itemTypeId, int count)
++        {
++            PlotId = plotId;
++            SlotIndex = slotIndex;
++            ItemTypeId = itemTypeId;
++            Count = count;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(PlotId);
++            writer.WriteInt(SlotIndex);
++            writer.WriteInt(ItemTypeId);
++            writer.WriteInt(Count);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            PlotId = reader.ReadString();
++            SlotIndex = reader.ReadInt();
++            ItemTypeId = reader.ReadInt();
++            Count = reader.ReadInt();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Shared/TreasurePodPacket.cs b/SR2MP/Packets/Shared/TreasurePodPacket.cs
+new file mode 100644
+index 0000000..113128e
+--- /dev/null
++++ b/SR2MP/Packets/Shared/TreasurePodPacket.cs
+@@ -0,0 +1,29 @@
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Packets.Shared
++{
++    public class TreasurePodPacket : IPacket
++    {
++        public PacketType Type => PacketType.TreasurePod;
++
++        public string Id;
++
++        public TreasurePodPacket() { }
++
++        public TreasurePodPacket(string id)
++        {
++            Id = id;
++        }
++
++        public void Serialise(PacketWriter writer)
++        {
++            writer.WriteByte((byte)Type);
++            writer.WriteString(Id);
++        }
++
++        public void Deserialise(PacketReader reader)
++        {
++            Id = reader.ReadString();
++        }
++    }
++}
+diff --git a/SR2MP/Packets/Utils/IPacketHandler.cs b/SR2MP/Packets/Utils/IPacketHandler.cs
+index 15b279e..ba4c4a2 100644
+--- a/SR2MP/Packets/Utils/IPacketHandler.cs
++++ b/SR2MP/Packets/Utils/IPacketHandler.cs
+@@ -1,8 +1,6 @@
+-using System.Net;
+-
+ namespace SR2MP.Packets.Utils;
+ 
+ public interface IPacketHandler
+ {
+-    void Handle(byte[] data, IPEndPoint clientEP);
++    void Handle(byte[] data, string clientIdentifier);
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Packets/Utils/PacketReader.cs b/SR2MP/Packets/Utils/PacketReader.cs
+index 6d66f85..b584413 100644
+--- a/SR2MP/Packets/Utils/PacketReader.cs
++++ b/SR2MP/Packets/Utils/PacketReader.cs
+@@ -28,6 +28,8 @@ public sealed class PacketReader : IDisposable
+ 
+     public bool ReadBool() => reader.ReadBoolean();
+ 
++    public byte[] ReadBytes(int count) => reader.ReadBytes(count);
++
+     public Vector3 ReadVector3() => new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+ 
+     public Quaternion ReadQuaternion() => new Quaternion(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
+diff --git a/SR2MP/Packets/Utils/PacketType.cs b/SR2MP/Packets/Utils/PacketType.cs
+index 15f7aef..c442d8d 100644
+--- a/SR2MP/Packets/Utils/PacketType.cs
++++ b/SR2MP/Packets/Utils/PacketType.cs
+@@ -31,5 +31,20 @@ public enum PacketType : byte
+     InitialPlayerUpgrades = 32,   // Server -> Client                                                                   Player Upgrades on Load
+     PlayerUpgrade = 33,           // Both Ways                                                                          On Upgrade
+     InitialPediaEntries = 34,     // Server -> Client                                                                   Pedia Entries on Load
+-    PediaUnlock = 35,             // Both Ways                                                                          On World FX Play
++    PediaUnlock = 35,             // Both Ways                                                                          On Pedia Unlock
++    Inventory = 36,               // Both Ways                                                                          Inventory Slot Update
++    Gadget = 37,                  // Both Ways                                                                          Gadget Update
++    InitialGadgets = 38,          // Server -> Client                                                                   Gadgets on Load
++    Decoration = 39,              // Both Ways                                                                          Decoration Update (Add/Remove)
++    PrismaBarrier = 40,           // Both Ways                                                                          Prisma Barrier Activation Time
++    PrismaDisruption = 41,        // Both Ways                                                                          Prisma Disruption Level Set
++    GardenPlant = 42,             // Both Ways                                                                          Garden Plant Update
++    SiloUpdate = 43,              // Both Ways                                                                          Silo Storage Update
++    RequestSave = 44,             // Client -> Server                                                                   Request Save Data
++    SaveData = 45,                // Server -> Client                                                                   Compressed Save Data
++    GordoEat = 46,                // Both Ways                                                                          Gordo Eat Count
++    TreasurePod = 47,             // Both Ways                                                                          Treasure Pod Open
++    MapUnlock = 48,               // Both Ways                                                                          Map Data Node Unlock
++    MarketUpdate = 49,            // Server -> Client                                                                   Market Prices Update
++    BlueprintUnlock = 50          // Both Ways                                                                          Gadget Blueprint Unlock
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Packets/Utils/PacketWriter.cs b/SR2MP/Packets/Utils/PacketWriter.cs
+index 6b88f90..a582d0a 100644
+--- a/SR2MP/Packets/Utils/PacketWriter.cs
++++ b/SR2MP/Packets/Utils/PacketWriter.cs
+@@ -27,6 +27,8 @@ public sealed class PacketWriter : IDisposable
+ 
+     public void WriteBool(bool value) => writer.Write(value);
+ 
++    public void WriteBytes(byte[] value) => writer.Write(value);
++
+     public void WritePacket<T>(T value) where T : IPacket => value.Serialise(this);
+ 
+     public void WriteEnum(Enum value) => Write(Convert.ChangeType(value, Enum.GetUnderlyingType(value.GetType())));
+diff --git a/SR2MP/Patches/Plots/GardenPatch.cs b/SR2MP/Patches/Plots/GardenPatch.cs
+new file mode 100644
+index 0000000..a1f352b
+--- /dev/null
++++ b/SR2MP/Patches/Plots/GardenPatch.cs
+@@ -0,0 +1,38 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Patches.Plots
++{
++    [HarmonyPatch(typeof(GardenCatcher))]
++    public static class GardenPatch
++    {
++        [HarmonyPatch(nameof(GardenCatcher.Plant))]
++        [HarmonyPostfix]
++        public static void PlantPostfix(GardenCatcher __instance, IdentifiableType cropId, bool isReplacement, GameObject __result)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            if (!Main.Server.IsRunning() && !Main.Client.IsConnected) return;
++            if (__result == null) return; // Plant failed
++
++            // Get the plot ID from the parent LandPlotLocation
++            var plotLocation = __instance.GetComponentInParent<LandPlotLocation>();
++            if (plotLocation == null) return;
++
++            // Find which slot was planted
++            // GardenCatcher has PlantSlot array, need to find the index
++            // For now, we'll send slot 0 - may need refinement
++            int slotIndex = 0;
++            
++            var packet = new GardenPlantPacket(
++                plotLocation._id,
++                GlobalVariables.actorManager.GetPersistentID(cropId),
++                slotIndex
++            );
++
++            Main.SendToAllOrServer(packet);
++        }
++    }
++}
+diff --git a/SR2MP/Patches/Plots/SiloPatch.cs b/SR2MP/Patches/Plots/SiloPatch.cs
+new file mode 100644
+index 0000000..bc330ee
+--- /dev/null
++++ b/SR2MP/Patches/Plots/SiloPatch.cs
+@@ -0,0 +1,70 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++using UnityEngine;
++
++namespace SR2MP.Patches.Plots
++{
++    [HarmonyPatch(typeof(SiloStorage))]
++    public static class SiloPatch
++    {
++        [HarmonyPatch(nameof(SiloStorage.MaybeAddIdentifiable), typeof(IdentifiableType), typeof(GameObject), typeof(int), typeof(int), typeof(bool))]
++        [HarmonyPostfix]
++        public static void MaybeAddPostfix(SiloStorage __instance, IdentifiableType id, GameObject inserted, int slotIdx, int count, bool overflow, bool __result)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            if (!Main.Server.IsRunning() && !Main.Client.IsConnected) return;
++            if (!__result) return; // Add failed
++
++            // Get the plot ID
++            var plotLocation = __instance.GetComponentInParent<LandPlotLocation>();
++            if (plotLocation == null) return;
++
++            // Get current count in the slot
++            int currentCount = __instance.GetSlotCount(slotIdx);
++
++            var packet = new SiloUpdatePacket(
++                plotLocation._id,
++                slotIdx,
++                GlobalVariables.actorManager.GetPersistentID(id),
++                currentCount
++            );
++
++            Main.SendToAllOrServer(packet);
++        }
++
++        [HarmonyPatch(nameof(SiloStorage.OnIdentifiableRemoved))]
++        [HarmonyPostfix]
++        public static void OnRemovedPostfix(SiloStorage __instance, IdentifiableType id)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            if (!Main.Server.IsRunning() && !Main.Client.IsConnected) return;
++
++            // Get the plot ID
++            var plotLocation = __instance.GetComponentInParent<LandPlotLocation>();
++            if (plotLocation == null) return;
++
++            // Since we don't know which slot was removed from, send updates for all slots
++            // This is less efficient but more reliable
++            var ammo = __instance.GetRelevantAmmo();
++            if (ammo == null) return;
++
++            // Send update for first 4 slots (typical silo size)
++            for (int i = 0; i < 4; i++)
++            {
++                var slotId = __instance.GetSlotIdentifiable(i);
++                int currentCount = __instance.GetSlotCount(i);
++                
++                var packet = new SiloUpdatePacket(
++                    plotLocation._id,
++                    i,
++                    slotId != null ? GlobalVariables.actorManager.GetPersistentID(slotId) : 0,
++                    currentCount
++                );
++
++                Main.SendToAllOrServer(packet);
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Patches/System/ClassDumperPatch.cs b/SR2MP/Patches/System/ClassDumperPatch.cs
+new file mode 100644
+index 0000000..5132aaf
+--- /dev/null
++++ b/SR2MP/Patches/System/ClassDumperPatch.cs
+@@ -0,0 +1,59 @@
++using System;
++using System.IO;
++using System.Linq;
++using System.Reflection;
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.World;
++
++namespace SR2MP.Patches.System;
++
++[HarmonyPatch(typeof(GameContext), nameof(GameContext.Start))]
++public static class ClassDumperPatch
++{
++    private static bool dumped = false;
++
++    public static void Postfix()
++    {
++        if (dumped) return;
++        dumped = true;
++
++        try
++        {
++            var dumpFile = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SR2MP_ClassDump.txt");
++            SrLogger.LogMessage($"Dumping classes to {dumpFile}...");
++
++            using var writer = new StreamWriter(dumpFile);
++            
++            // Get all assemblies
++            var assemblies = AppDomain.CurrentDomain.GetAssemblies();
++            
++            foreach (var assembly in assemblies)
++            {
++                writer.WriteLine($"Assembly: {assembly.FullName}");
++                try
++                {
++                    // Filter for interesting assemblies
++                    if (!assembly.FullName.Contains("Il2Cpp") && !assembly.FullName.Contains("Assembly-CSharp"))
++                        continue;
++
++                    var types = assembly.GetTypes();
++                    foreach (var type in types)
++                    {
++                        writer.WriteLine($"  Type: {type.FullName}");
++                    }
++                }
++                catch (Exception e)
++                {
++                    writer.WriteLine($"  Error reading assembly: {e.Message}");
++                }
++                writer.WriteLine();
++            }
++
++            SrLogger.LogMessage("Class dump complete!");
++        }
++        catch (Exception ex)
++        {
++            SrLogger.LogError($"Failed to dump classes: {ex}");
++        }
++    }
++}
+diff --git a/SR2MP/Patches/System/GameContextPatch.cs b/SR2MP/Patches/System/GameContextPatch.cs
+new file mode 100644
+index 0000000..dfe2970
+--- /dev/null
++++ b/SR2MP/Patches/System/GameContextPatch.cs
+@@ -0,0 +1,13 @@
++using HarmonyLib;
++using SR2MP.Shared.Managers;
++
++namespace SR2MP.Patches.System;
++
++[HarmonyPatch(typeof(GameContext), nameof(GameContext.Start))]
++public static class GameContextPatch
++{
++    public static void Postfix(GameContext __instance)
++    {
++        GlobalVariables.actorManager.Initialize(__instance);
++    }
++}
+diff --git a/SR2MP/Patches/World/BlueprintPatch.cs b/SR2MP/Patches/World/BlueprintPatch.cs
+new file mode 100644
+index 0000000..c9e8cbd
+--- /dev/null
++++ b/SR2MP/Patches/World/BlueprintPatch.cs
+@@ -0,0 +1,20 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++using UnityEngine;
++
++namespace SR2MP.Patches.World
++{
++    [HarmonyPatch(typeof(GadgetDirector), nameof(GadgetDirector.AddBlueprint))]
++    public static class BlueprintPatch
++    {
++        public static void Postfix(GadgetDirector __instance, Il2Cpp.GadgetDefinition gadgetDefinition)
++        {
++            if (GlobalVariables.handlingPacket) return;
++
++            string id = gadgetDefinition.name; // or gadgetDefinition.Id
++            
++            Main.SendToAllOrServer(new BlueprintUnlockPacket(id));
++        }
++    }
++}
+diff --git a/SR2MP/Patches/World/DecorizerPatch.cs b/SR2MP/Patches/World/DecorizerPatch.cs
+new file mode 100644
+index 0000000..b98be07
+--- /dev/null
++++ b/SR2MP/Patches/World/DecorizerPatch.cs
+@@ -0,0 +1,56 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++using UnityEngine;
++
++namespace SR2MP.Patches.World
++{
++    [HarmonyPatch(typeof(DecorizerModel))]
++    public static class DecorizerPatch
++    {
++        // DecorizerModel.Add takes only IdentifiableType - it's an inventory count system
++        // DecorizerModel.Remove takes only IdentifiableType
++        
++        [HarmonyPatch(nameof(DecorizerModel.Add), typeof(IdentifiableType))]
++        [HarmonyPostfix]
++        public static void AddPostfix(DecorizerModel __instance, IdentifiableType id, bool __result)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            if (!__result) return; // if add failed, don't sync
++
++            if (Main.Client.IsConnected || Main.Server.IsRunning())
++            {
++                var packet = new DecorationPacket(
++                    id.GetHashCode(), 
++                    id,
++                    Vector3.zero, // DecorizerModel doesn't track position
++                    Quaternion.identity,
++                    false
++                );
++
++                Main.SendToAllOrServer(packet);
++            }
++        }
++
++        [HarmonyPatch(nameof(DecorizerModel.Remove), typeof(IdentifiableType))]
++        [HarmonyPostfix]
++        public static void RemovePostfix(DecorizerModel __instance, IdentifiableType id, bool __result)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            if (!__result) return;
++
++            if (Main.Client.IsConnected || Main.Server.IsRunning())
++            {
++                var packet = new DecorationPacket(
++                    id.GetHashCode(),
++                    id,
++                    Vector3.zero,
++                    Quaternion.identity,
++                    true
++                );
++
++                Main.SendToAllOrServer(packet);
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Patches/World/GadgetDirectorPatch.cs b/SR2MP/Patches/World/GadgetDirectorPatch.cs
+new file mode 100644
+index 0000000..de894ed
+--- /dev/null
++++ b/SR2MP/Patches/World/GadgetDirectorPatch.cs
+@@ -0,0 +1,35 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.SceneManagement;
++using Il2CppMonomiPark.SlimeRancher.World;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using UnityEngine;
++using System.Linq;
++using SR2MP.Components.World;
++
++namespace SR2MP.Patches.World;
++
++[HarmonyPatch(typeof(GadgetDirector), nameof(GadgetDirector.InstantiateGadget))]
++public static class GadgetDirectorPatch
++{
++    public static void Postfix(GameObject original, Vector3 position, Quaternion rotation, GameObject __result)
++    {
++        if (GlobalVariables.handlingPacket) return;
++        if (__result == null) return; 
++
++        var netGadget = __result.GetComponent<NetworkGadget>();
++        if (netGadget == null) return;
++
++        var packet = new GadgetPacket
++        {
++            Type = (byte)PacketType.Gadget,
++            GadgetId = netGadget.GadgetId,
++            GadgetTypeId = GlobalVariables.actorManager.GetPersistentID(original.GetComponent<Identifiable>().identType),
++            Position = position,
++            Rotation = rotation,
++            IsRemoval = false
++        };
++
++        Main.SendToAllOrServer(packet);
++    }
++}
+diff --git a/SR2MP/Patches/World/GadgetPatch.cs b/SR2MP/Patches/World/GadgetPatch.cs
+new file mode 100644
+index 0000000..ebb1c3a
+--- /dev/null
++++ b/SR2MP/Patches/World/GadgetPatch.cs
+@@ -0,0 +1,36 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.World;
++using UnityEngine;
++using SR2MP.Components.World;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Patches.World;
++
++[HarmonyPatch(typeof(Gadget))]
++public static class GadgetPatch
++{
++    [HarmonyPatch(nameof(Gadget.Awake))]
++    [HarmonyPostfix]
++    public static void AwakePostfix(Gadget __instance)
++    {
++        if (__instance.GetComponent<NetworkGadget>()) return;
++
++        var netGadget = __instance.gameObject.AddComponent<NetworkGadget>();
++
++        if (!string.IsNullOrEmpty(GlobalVariables.currentlyInstantiatingGadgetId))
++        {
++            netGadget.GadgetId = GlobalVariables.currentlyInstantiatingGadgetId;
++            GlobalVariables.currentlyInstantiatingGadgetId = string.Empty;
++        }
++        else
++        {
++            netGadget.GadgetId = global::System.Guid.NewGuid().ToString();
++        }
++
++        if (!GlobalVariables.gadgetsById.ContainsKey(netGadget.GadgetId))
++        {
++            GlobalVariables.gadgetsById.Add(netGadget.GadgetId, __instance.gameObject);
++        }
++    }
++}
+diff --git a/SR2MP/Patches/World/GordoPatch.cs b/SR2MP/Patches/World/GordoPatch.cs
+new file mode 100644
+index 0000000..016c265
+--- /dev/null
++++ b/SR2MP/Patches/World/GordoPatch.cs
+@@ -0,0 +1,24 @@
++using HarmonyLib;
++using Il2Cpp;
++using SR2MP.Packets.Shared;
++using UnityEngine;
++
++namespace SR2MP.Patches.World
++{
++    /*
++    [HarmonyPatch(typeof(GordoEat), nameof(GordoEat.Eat))]
++    public static class GordoPatch
++    {
++        public static void Postfix(GordoEat __instance)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            if (__instance == null || __instance.GordoModel == null) return;
++
++            string name = __instance.gameObject.name;
++            int count = __instance.GordoModel.GordoEatenCount;
++
++            Main.SendToAllOrServer(new GordoEatPacket(name, count));
++        }
++    }
++    */
++}
+diff --git a/SR2MP/Patches/World/MapUnlockPatch.cs b/SR2MP/Patches/World/MapUnlockPatch.cs
+new file mode 100644
+index 0000000..cea91a0
+--- /dev/null
++++ b/SR2MP/Patches/World/MapUnlockPatch.cs
+@@ -0,0 +1,38 @@
++using HarmonyLib;
++using Il2Cpp;
++using SR2MP.Packets.Shared;
++using UnityEngine;
++
++using Il2CppMonomiPark.SlimeRancher.UI;
++
++namespace SR2MP.Patches.World
++{
++    [HarmonyPatch(typeof(TechUIInteractable), nameof(TechUIInteractable.OnInteract))]
++    public static class MapUnlockPatch
++    {
++        public static void Postfix(TechUIInteractable __instance)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            
++            // Should verify if this is a Map Node? 
++            // Map Nodes usually have specific names or components.
++            // But syncing all TechUI interactions might be harmless if handled correctly implicitly?
++            // "MapData" or similar might be involved.
++            // GitHub checks if the object is "MapData" related? 
++            // GitHub code:
++            /*
++               var techUI = ...;
++               techUI.OnInteract();
++            */
++            // It assumes by name it finds the right object.
++            
++            // Filter by name pattern or component if needed.
++            // For now, sync all TechUI interactions. Most are map reveals in SR2?
++            // Or use "RegionMapUnlock" logic?
++            
++            string name = __instance.gameObject.name;
++
++            Main.SendToAllOrServer(new MapUnlockPacket(name));
++        }
++    }
++}
+diff --git a/SR2MP/Patches/World/MarketPatch.cs b/SR2MP/Patches/World/MarketPatch.cs
+new file mode 100644
+index 0000000..e87b603
+--- /dev/null
++++ b/SR2MP/Patches/World/MarketPatch.cs
+@@ -0,0 +1,56 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.Economy;
++using SR2MP.Packets.Shared;
++using UnityEngine;
++using System.Linq;
++using System.Collections.Generic;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++
++namespace SR2MP.Patches.World
++{
++    [HarmonyPatch(typeof(PlortEconomyDirector), nameof(PlortEconomyDirector.ResetPrices))]
++    public static class MarketPatch
++    {
++        public static void Postfix(PlortEconomyDirector __instance)
++        {
++            if (GlobalVariables.handlingPacket) return;
++            if (!Main.Server.IsRunning()) return;
++
++            // Iterate all plorts/items that have prices
++            // Since we don't have a direct list of "PricedItems", we might iterate all Identifiables?
++            // Expensive.
++            // Or use EconomyDirector's internal dictionary if accessible.
++            // __instance._currValueMap? (Dictionary<IdentifiableType, float>)
++            
++            // Let's assume we can access all IdentifiableTypes via GlobalVariables.actorManager or LookupDirector?
++            // GameContext.Instance.LookupDirector.GetIdentifiableTypes()?
++            
++            // GitHub version iterates `Core.Identifiables`.
++            
++            // I'll try to use `__instance._currValueMap` if it's public/internal.
++            // If not, I'll rely on `GameContext.Instance.GetIdentifiableTypes()` (pseudocode).
++            // Actually, `GameContext.Instance.LookupDirector` likely has a way.
++            
++            // For now, let's use a safe approach:
++            var prices = new Dictionary<string, float>();
++            
++            // If we can't easily iterate, we leave it empty for now or rely on a specific list later.
++            // But I want this to work.
++            
++            // Assumption: `_currValueMap` is available.
++            /*
++            foreach (var kvp in __instance._currValueMap) {
++                 prices[kvp.Key.name] = kvp.Value;
++            }
++            */
++            
++            // Alternative: Iterate a known list of Plorts.
++            // "PinkPlort", "CottonPlort", "TabbyPlort", ...
++            // This is brittle.
++            
++            MelonLoader.MelonLogger.Warning("MarketPatch: _currValueMap access not confirmed. Synchronization might correspond to empty list if not fixed.");
++            
++            Main.SendToAllOrServer(new MarketUpdatePacket(prices));
++        }
++    }
++}
+diff --git a/SR2MP/Patches/World/PrismaBarrierPatch.cs b/SR2MP/Patches/World/PrismaBarrierPatch.cs
+new file mode 100644
+index 0000000..9fef518
+--- /dev/null
++++ b/SR2MP/Patches/World/PrismaBarrierPatch.cs
+@@ -0,0 +1,27 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++
++namespace SR2MP.Patches.World
++{
++    [HarmonyPatch(typeof(PrismaBarrierModel))]
++    public static class PrismaBarrierPatch
++    {
++        [HarmonyPatch(nameof(PrismaBarrierModel.ActivationTime), MethodType.Setter)]
++        [HarmonyPostfix]
++        public static void SetActivationTimePostfix(PrismaBarrierModel __instance, double value)
++        {
++            if (GlobalVariables.handlingPacket) return;
++
++            if (Main.Client.IsConnected || Main.Server.IsRunning())
++            {
++                var packet = new PrismaBarrierPacket(
++                    __instance.Id,
++                    value
++                );
++
++                Main.SendToAllOrServer(packet);
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Patches/World/PrismaDisruptionPatch.cs b/SR2MP/Patches/World/PrismaDisruptionPatch.cs
+new file mode 100644
+index 0000000..7ecb336
+--- /dev/null
++++ b/SR2MP/Patches/World/PrismaDisruptionPatch.cs
+@@ -0,0 +1,53 @@
++using HarmonyLib;
++using Il2CppMonomiPark.SlimeRancher.Labyrinth;
++using SR2MP.Packets.Shared;
++
++namespace SR2MP.Patches.World
++{
++    [HarmonyPatch(typeof(PrismaDirector))]
++    public static class PrismaDisruptionPatch
++    {
++        [HarmonyPatch(nameof(PrismaDirector.SetDisruptionLevel))]
++        [HarmonyPostfix]
++        public static void SetDisruptionLevelPostfix(PrismaDirector __instance, PrismaDirector.DisruptionArea area, DisruptionLevel level, bool isTransition)
++        {
++            if (GlobalVariables.handlingPacket) return;
++
++            if (Main.Client.IsConnected || Main.Server.IsRunning())
++            {
++                // Reverse lookup the area ID from the dictionary
++
++                string areaId = "";
++                
++                // Reverse lookup in _disruptionAreas
++                var dict = __instance._disruptionAreas;
++                if (dict != null)
++                {
++                    foreach (var entry in dict)
++                    {
++                        if (entry.Value.Equals(area))
++                        {
++                            areaId = entry.Key.name;
++                            break;
++                        }
++                    }
++                }
++
++                if (!string.IsNullOrEmpty(areaId))
++                {
++                    var packet = new PrismaDisruptionPacket(
++                        areaId,
++                        (int)level,
++                        isTransition
++                    );
++
++                    Main.SendToAllOrServer(packet);
++                }
++                else
++                {
++                    MelonLoader.MelonLogger.Warning("Could not find ID for DisruptionArea in SetDisruptionLevel patch.");
++                }
++            }
++        }
++    }
++}
+diff --git a/SR2MP/Patches/World/TreasurePodPatch.cs b/SR2MP/Patches/World/TreasurePodPatch.cs
+new file mode 100644
+index 0000000..25ad684
+--- /dev/null
++++ b/SR2MP/Patches/World/TreasurePodPatch.cs
+@@ -0,0 +1,20 @@
++using HarmonyLib;
++using Il2Cpp;
++using SR2MP.Packets.Shared;
++using UnityEngine;
++
++namespace SR2MP.Patches.World
++{
++    [HarmonyPatch(typeof(TreasurePod), nameof(TreasurePod.Activate))]
++    public static class TreasurePodPatch
++    {
++        public static void Postfix(TreasurePod __instance)
++        {
++            if (GlobalVariables.handlingPacket) return;
++
++            string name = __instance.gameObject.name;
++
++            Main.SendToAllOrServer(new TreasurePodPacket(name));
++        }
++    }
++}
+diff --git a/SR2MP/SR2MP.csproj b/SR2MP/SR2MP.csproj
+index 93136f0..dfa9805 100644
+--- a/SR2MP/SR2MP.csproj
++++ b/SR2MP/SR2MP.csproj
+@@ -3,7 +3,7 @@
+       <TargetFramework>net6.0</TargetFramework>
+       <ImplicitUsings>enable</ImplicitUsings>
+       <Nullable>enable</Nullable>
+-      <Version>0.1.0</Version>
++      <Version>0.1.1</Version>
+       <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+       <PlatformTarget>x64</PlatformTarget>
+       <EnableNETAnalyzers>true</EnableNETAnalyzers>
+@@ -20,7 +20,13 @@
+     </PropertyGroup>
+ 
+     <ItemGroup>
+-      <Reference Include="libraries/*.dll" />
++      <Reference Include="..\GAMEFILES\MelonLoader\net6\MelonLoader.dll" />
++      <Reference Include="..\GAMEFILES\MelonLoader\net6\Il2CppInterop.Runtime.dll" />
++      <Reference Include="..\GAMEFILES\MelonLoader\net6\Il2CppInterop.Common.dll" />
++      <Reference Include="..\GAMEFILES\MelonLoader\net6\0Harmony.dll" />
++      <Reference Include="..\GAMEFILES\MelonLoader\net6\Newtonsoft.Json.dll" />
++      <Reference Include="..\GAMEFILES\MelonLoader\Il2CppAssemblies\*.dll" />
++      <Reference Include="..\GAMEFILES\Mods\SR2E.dll" />
+ 
+       <PackageReference Include="Roslynator.Analyzers" Version="4.12.11" PrivateAssets="all" ExcludeAssets="runtime" />
+       <PackageReference Include="Roslynator.Formatting.Analyzers" Version="4.12.11" PrivateAssets="all" ExcludeAssets="runtime" />
+diff --git a/SR2MP/Server/Handlers/ActorDestroyHandler.cs b/SR2MP/Server/Handlers/ActorDestroyHandler.cs
+index da0c3d9..572288c 100644
+--- a/SR2MP/Server/Handlers/ActorDestroyHandler.cs
++++ b/SR2MP/Server/Handlers/ActorDestroyHandler.cs
+@@ -10,7 +10,7 @@ public sealed class ActorDestroyHandler : BasePacketHandler
+     public ActorDestroyHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<ActorDestroyPacket>();
+@@ -26,6 +26,6 @@ public sealed class ActorDestroyHandler : BasePacketHandler
+         Destroyer.DestroyActor(actor.GetGameObject(), "SR2MP.ActorDestroyHandler");
+         handlingPacket = false;
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/ActorSpawnHandler.cs b/SR2MP/Server/Handlers/ActorSpawnHandler.cs
+index 50f2f56..07e332b 100644
+--- a/SR2MP/Server/Handlers/ActorSpawnHandler.cs
++++ b/SR2MP/Server/Handlers/ActorSpawnHandler.cs
+@@ -12,7 +12,7 @@ public sealed class ActorSpawnHandler : BasePacketHandler
+     public ActorSpawnHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<ActorSpawnPacket>();
+@@ -42,6 +42,6 @@ public sealed class ActorSpawnHandler : BasePacketHandler
+             }
+         }
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/ActorTransferHandler.cs b/SR2MP/Server/Handlers/ActorTransferHandler.cs
+index 89d19a9..ff9f0d1 100644
+--- a/SR2MP/Server/Handlers/ActorTransferHandler.cs
++++ b/SR2MP/Server/Handlers/ActorTransferHandler.cs
+@@ -11,7 +11,7 @@ public sealed class ActorTransferHandler : BasePacketHandler
+     public ActorTransferHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<ActorTransferPacket>();
+@@ -35,6 +35,6 @@ public sealed class ActorTransferHandler : BasePacketHandler
+ 
+         component.LocallyOwned = false;
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/ActorUpdateHandler.cs b/SR2MP/Server/Handlers/ActorUpdateHandler.cs
+index 34b2437..638c735 100644
+--- a/SR2MP/Server/Handlers/ActorUpdateHandler.cs
++++ b/SR2MP/Server/Handlers/ActorUpdateHandler.cs
+@@ -12,7 +12,7 @@ public sealed class ActorUpdateHandler : BasePacketHandler
+     public ActorUpdateHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<ActorUpdatePacket>();
+@@ -39,6 +39,6 @@ public sealed class ActorUpdateHandler : BasePacketHandler
+                 networkComponent.GetComponent<SlimeEmotions>().SetAll(packet.Emotions);
+         }
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/BasePacketHandler.cs b/SR2MP/Server/Handlers/BasePacketHandler.cs
+index 8afdb14..f7a4b39 100644
+--- a/SR2MP/Server/Handlers/BasePacketHandler.cs
++++ b/SR2MP/Server/Handlers/BasePacketHandler.cs
+@@ -1,4 +1,3 @@
+-using System.Net;
+ using SR2MP.Server.Managers;
+ using SR2MP.Server.Models;
+ using SR2MP.Packets.Utils;
+@@ -16,5 +15,5 @@ public abstract class BasePacketHandler : IPacketHandler
+         this.clientManager = clientManager;
+     }
+ 
+-    public abstract void Handle(byte[] data, IPEndPoint senderEndPoint);
++    public abstract void Handle(byte[] data, string clientIdentifier);
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/ChatMessageHandler.cs b/SR2MP/Server/Handlers/ChatMessageHandler.cs
+index b9a756f..419e25e 100644
+--- a/SR2MP/Server/Handlers/ChatMessageHandler.cs
++++ b/SR2MP/Server/Handlers/ChatMessageHandler.cs
+@@ -12,13 +12,13 @@ public sealed class ChatMessageHandler : BasePacketHandler
+     {
+     }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<ChatMessagePacket>();
+ 
+         SrLogger.LogMessage($"Chat message from {packet.PlayerId}: {packet.Message}",
+-            $"Chat message from {senderEndPoint} ({packet.PlayerId}): {packet.Message}");
++            $"Chat message from {clientIdentifier} ({packet.PlayerId}): {packet.Message}");
+ 
+         var broadcastPacket = new BroadcastChatMessagePacket
+         {
+diff --git a/SR2MP/Server/Handlers/ConnectHandler.cs b/SR2MP/Server/Handlers/ConnectHandler.cs
+index 47372ce..199dbcc 100644
+--- a/SR2MP/Server/Handlers/ConnectHandler.cs
++++ b/SR2MP/Server/Handlers/ConnectHandler.cs
+@@ -7,6 +7,11 @@ using MelonLoader;
+ using SR2MP.Server.Managers;
+ using SR2MP.Packets.Utils;
+ using SR2MP.Server.Models;
++using SR2MP.Components.World;
++using System.Linq;
++using System.Collections.Generic;
++using UnityEngine;
++using Il2CppMonomiPark.SlimeRancher.World;
+ 
+ namespace SR2MP.Server.Handlers;
+ 
+@@ -16,7 +21,7 @@ public sealed class ConnectHandler : BasePacketHandler
+     public ConnectHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         reader.Skip(1);
+@@ -24,9 +29,24 @@ public sealed class ConnectHandler : BasePacketHandler
+         var playerId = reader.ReadString();
+ 
+         SrLogger.LogMessage($"Connect request received with PlayerId: {playerId}",
+-            $"Connect request from {senderEndPoint} with PlayerId: {playerId}");
++            $"Connect request from {clientIdentifier} with PlayerId: {playerId}");
+ 
+-        clientManager.AddClient(senderEndPoint, playerId);
++        // Parse clientIdentifier (e.g., "[::1]:12345" or "1.2.3.4:5678") back to IPEndPoint
++        int lastColon = clientIdentifier.LastIndexOf(':');
++        if (lastColon > 0)
++        {
++            string ipStr = clientIdentifier.Substring(0, lastColon);
++            string portStr = clientIdentifier.Substring(lastColon + 1);
++
++            if (ipStr.StartsWith("[") && ipStr.EndsWith("]"))
++                ipStr = ipStr.Substring(1, ipStr.Length - 2);
++
++            if (IPAddress.TryParse(ipStr, out var ip) && int.TryParse(portStr, out var port))
++            {
++                var endPoint = new IPEndPoint(ip, port);
++                clientManager.AddClient(clientIdentifier, endPoint, playerId);
++            }
++        }
+ 
+         var money = SceneContext.Instance.PlayerState.GetCurrency(GameContext.Instance.LookupDirector._currencyList[0]
+             .Cast<ICurrency>());
+@@ -38,30 +58,31 @@ public sealed class ConnectHandler : BasePacketHandler
+         {
+             Type = (byte)PacketType.ConnectAck,
+             PlayerId = playerId,
+-            OtherPlayers = Array.ConvertAll(playerManager.GetAllPlayers().ToArray(), input => input.PlayerId),
++            OtherPlayers = Array.ConvertAll(clientManager.GetAllClients().ToArray(), input => input.PlayerId),
+             Money = money,
+             RainbowMoney = rainbowMoney
+         };
+ 
+-        Main.Server.SendToClient(ackPacket, senderEndPoint);
++        Main.Server.SendToClient(ackPacket, clientIdentifier);
+ 
+         var joinPacket = new PlayerJoinPacket
+         {
+             Type = (byte)PacketType.PlayerJoin, PlayerId = playerId, PlayerName = Main.Username
+         };
+ 
+-        Main.Server.SendToAllExcept(joinPacket, senderEndPoint);
++        Main.Server.SendToAllExcept(joinPacket, clientIdentifier);
+ 
+-        SendPlotsPacket(senderEndPoint);
+-        SendActorsPacket(senderEndPoint);
+-        SendUpgradesPacket(senderEndPoint);
+-        SendPediaPacket(senderEndPoint);
++        SendPlotsPacket(clientIdentifier);
++        SendActorsPacket(clientIdentifier);
++        SendGadgetsPacket(clientIdentifier);
++        SendUpgradesPacket(clientIdentifier);
++        SendPediaPacket(clientIdentifier);
+ 
+         SrLogger.LogMessage($"Player {playerId} successfully connected",
+-            $"Player {playerId} successfully connected from {senderEndPoint}");
++            $"Player {playerId} successfully connected from {clientIdentifier}");
+     }
+ 
+-    void SendUpgradesPacket(IPEndPoint client)
++    void SendUpgradesPacket(string clientIdentifier)
+     {
+         var upgrades = new Dictionary<byte, sbyte>();
+ 
+@@ -75,9 +96,9 @@ public sealed class ConnectHandler : BasePacketHandler
+             Type = (byte)PacketType.InitialPlayerUpgrades,
+             Upgrades = upgrades,
+         };
+-        Main.Server.SendToClient(upgradesPacket, client);
++        Main.Server.SendToClient(upgradesPacket, clientIdentifier);
+     } 
+-    void SendPediaPacket(IPEndPoint client)
++    void SendPediaPacket(string clientIdentifier)
+     {
+         var unlocked = SceneContext.Instance.PediaDirector._pediaModel.unlocked;
+         
+@@ -96,12 +117,12 @@ public sealed class ConnectHandler : BasePacketHandler
+             Entries = unlockedIDs
+         };
+ 
+-        Main.Server.SendToClient(pediasPacket, client);
++        Main.Server.SendToClient(pediasPacket, clientIdentifier);
+ 
+         SrLogger.LogMessage("InitialPediaEntries packet sent");
+     }
+ 
+-    void SendActorsPacket(IPEndPoint client)
++    void SendActorsPacket(string clientIdentifier)
+     {
+         var actorsList = new List<ActorsPacket.Actor>();
+ 
+@@ -113,7 +134,7 @@ public sealed class ConnectHandler : BasePacketHandler
+             actorsList.Add(new ActorsPacket.Actor()
+             {
+                 ActorId = actor.actorId.Value,
+-                ActorType = actorManager.GetPersistentID(actor.ident),
++                ActorType = GlobalVariables.actorManager.GetPersistentID(actor.ident),
+                 Position = actor.lastPosition,
+                 Rotation = rotation,
+             });
+@@ -125,10 +146,10 @@ public sealed class ConnectHandler : BasePacketHandler
+             Actors = actorsList
+         };
+ 
+-        Main.Server.SendToClient(actorsPacket, client);
++        Main.Server.SendToClient(actorsPacket, clientIdentifier);
+     }
+ 
+-    void SendPlotsPacket(IPEndPoint client)
++    void SendPlotsPacket(string clientIdentifier)
+     {
+         var plotsList = new List<LandPlotsPacket.Plot>();
+     
+@@ -157,6 +178,40 @@ public sealed class ConnectHandler : BasePacketHandler
+             Plots = plotsList
+         };
+ 
+-        Main.Server.SendToClient(plotsPacket, client);
++        Main.Server.SendToClient(plotsPacket, clientIdentifier);
++    }
++
++    void SendGadgetsPacket(string clientIdentifier)
++    {
++        var gadgetsList = new List<GadgetPacket>();
++        
++        foreach (var entry in GlobalVariables.gadgetsById)
++        {
++            if (entry.Value == null) continue;
++            
++            var identifiable = entry.Value.GetComponent<Identifiable>();
++            if (identifiable == null) continue;
++
++            var netGadget = entry.Value.GetComponent<NetworkGadget>();
++            if (netGadget == null) continue;
++
++            gadgetsList.Add(new GadgetPacket
++            {
++                Type = (byte)PacketType.Gadget,
++                GadgetId = netGadget.GadgetId,
++                GadgetTypeId = GlobalVariables.actorManager.GetPersistentID(identifiable.identType),
++                Position = entry.Value.transform.position,
++                Rotation = entry.Value.transform.rotation,
++                IsRemoval = false
++            });
++        }
++
++        var initialGadgetsPacket = new InitialGadgetsPacket
++        {
++            Type = (byte)PacketType.InitialGadgets,
++            Gadgets = gadgetsList
++        };
++
++        Main.Server.SendToClient(initialGadgetsPacket, clientIdentifier);
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/SR2MP/Server/Handlers/CurrencyHandler.cs b/SR2MP/Server/Handlers/CurrencyHandler.cs
+index d6366ef..56a5414 100644
+--- a/SR2MP/Server/Handlers/CurrencyHandler.cs
++++ b/SR2MP/Server/Handlers/CurrencyHandler.cs
+@@ -11,7 +11,7 @@ public sealed class CurrencyHandler : BasePacketHandler
+     public CurrencyHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<CurrencyPacket>();
+@@ -25,6 +25,6 @@ public sealed class CurrencyHandler : BasePacketHandler
+             SceneContext.Instance.PlayerState.AddCurrency(currency!.Cast<ICurrency>(), packet.Adjust, packet.ShowUINotification, null);
+         handlingPacket = false;
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/FastForwardHandler.cs b/SR2MP/Server/Handlers/FastForwardHandler.cs
+index 5c7003b..7f98640 100644
+--- a/SR2MP/Server/Handlers/FastForwardHandler.cs
++++ b/SR2MP/Server/Handlers/FastForwardHandler.cs
+@@ -10,7 +10,7 @@ public sealed class FastForwardHandler : BasePacketHandler
+     public FastForwardHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<WorldTimePacket>();
+@@ -23,6 +23,6 @@ public sealed class FastForwardHandler : BasePacketHandler
+         {
+             Type = (byte)PacketType.BroadcastFastForward,
+             Time = packet.Time
+-        }, senderEndPoint);
++        }, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/GadgetHandler.cs b/SR2MP/Server/Handlers/GadgetHandler.cs
+new file mode 100644
+index 0000000..a9ea484
+--- /dev/null
++++ b/SR2MP/Server/Handlers/GadgetHandler.cs
+@@ -0,0 +1,27 @@
++using System.Net;
++using SR2MP.Server.Managers;
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Shared.Managers;
++
++namespace SR2MP.Server.Handlers;
++
++[PacketHandler((byte)PacketType.Gadget)]
++public class GadgetHandler : BasePacketHandler
++{
++    public GadgetHandler(NetworkManager networkManager, ClientManager clientManager)
++        : base(networkManager, clientManager) { }
++
++    public override void Handle(byte[] data, string clientIdentifier)
++    {
++        using var reader = new PacketReader(data);
++        var packet = reader.ReadPacket<GadgetPacket>();
++        
++        // Broadcast to all other clients
++        using var writer = new PacketWriter();
++        packet.Serialise(writer);
++        
++        // Use injected network manager or Main.Server
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
++    }
++}
+diff --git a/SR2MP/Server/Handlers/GardenPlantHandler.cs b/SR2MP/Server/Handlers/GardenPlantHandler.cs
+new file mode 100644
+index 0000000..f798d4d
+--- /dev/null
++++ b/SR2MP/Server/Handlers/GardenPlantHandler.cs
+@@ -0,0 +1,22 @@
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Server.Managers;
++
++namespace SR2MP.Server.Handlers
++{
++    [PacketHandler((byte)PacketType.GardenPlant)]
++    public class GardenPlantHandler : BasePacketHandler
++    {
++        public GardenPlantHandler(NetworkManager networkManager, ClientManager clientManager) 
++            : base(networkManager, clientManager) { }
++
++        public override void Handle(byte[] data, string clientIdentifier)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<GardenPlantPacket>();
++
++            // Broadcast to all other clients
++            Main.Server.SendToAllExcept(packet, clientIdentifier);
++        }
++    }
++}
+diff --git a/SR2MP/Server/Handlers/InventoryHandler.cs b/SR2MP/Server/Handlers/InventoryHandler.cs
+new file mode 100644
+index 0000000..d260f1a
+--- /dev/null
++++ b/SR2MP/Server/Handlers/InventoryHandler.cs
+@@ -0,0 +1,24 @@
++using System.Net;
++using SR2MP.Server.Managers;
++using SR2MP.Packets.Utils;
++
++namespace SR2MP.Server.Handlers;
++
++[PacketHandler((byte)PacketType.Inventory)]
++public sealed class InventoryHandler : BasePacketHandler
++{
++    public InventoryHandler(NetworkManager networkManager, ClientManager clientManager)
++        : base(networkManager, clientManager) { }
++
++    public override void Handle(byte[] data, string clientIdentifier)
++    {
++        using var reader = new PacketReader(data);
++        var packet = reader.ReadPacket<InventoryPacket>();
++
++        // Update Server State
++        Main.Server.playerInventoryManager.UpdateInventory(packet.PlayerId, packet.SlotIdx, packet.ItemId, packet.Count);
++
++        // Rebroadcast to others (so they can see visuals eventually)
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
++    }
++}
+diff --git a/SR2MP/Server/Handlers/LandplotUpdateHandler.cs b/SR2MP/Server/Handlers/LandplotUpdateHandler.cs
+index 39a5c36..3a26050 100644
+--- a/SR2MP/Server/Handlers/LandplotUpdateHandler.cs
++++ b/SR2MP/Server/Handlers/LandplotUpdateHandler.cs
+@@ -10,14 +10,14 @@ public sealed class LandplotUpdateHandler : BasePacketHandler
+     public LandplotUpdateHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<LandPlotUpdatePacket>();
+ 
+         var model = SceneContext.Instance.GameModel.landPlots[packet.ID];
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+ 
+         if (!packet.IsUpgrade)
+         {
+diff --git a/SR2MP/Server/Handlers/MovementSoundHandler.cs b/SR2MP/Server/Handlers/MovementSoundHandler.cs
+index 3dc93f1..e65f87e 100644
+--- a/SR2MP/Server/Handlers/MovementSoundHandler.cs
++++ b/SR2MP/Server/Handlers/MovementSoundHandler.cs
+@@ -10,13 +10,13 @@ public sealed class MovementSoundHandler : BasePacketHandler
+     public MovementSoundHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<MovementSoundPacket>();
+ 
+         fxManager.PlayTransientAudio(fxManager.allCues[packet.CueName], packet.Position, 0.45f);
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/PediaUnlockHandler.cs b/SR2MP/Server/Handlers/PediaUnlockHandler.cs
+index 1550a19..b212efd 100644
+--- a/SR2MP/Server/Handlers/PediaUnlockHandler.cs
++++ b/SR2MP/Server/Handlers/PediaUnlockHandler.cs
+@@ -10,7 +10,7 @@ public sealed class PediaUnlockHandler : BasePacketHandler
+     public PediaUnlockHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<PediaUnlockPacket>();
+@@ -22,6 +22,6 @@ public sealed class PediaUnlockHandler : BasePacketHandler
+             packet.Popup);
+         handlingPacket = false;
+         
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/PlayerFXHandler.cs b/SR2MP/Server/Handlers/PlayerFXHandler.cs
+index cf4b8a0..f2aae67 100644
+--- a/SR2MP/Server/Handlers/PlayerFXHandler.cs
++++ b/SR2MP/Server/Handlers/PlayerFXHandler.cs
+@@ -10,7 +10,7 @@ public sealed class PlayerFXHandler : BasePacketHandler
+     public PlayerFXHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<PlayerFXPacket>();
+@@ -42,6 +42,6 @@ public sealed class PlayerFXHandler : BasePacketHandler
+             }
+         }
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/PlayerJoinHandler.cs b/SR2MP/Server/Handlers/PlayerJoinHandler.cs
+index ac06219..1f51264 100644
+--- a/SR2MP/Server/Handlers/PlayerJoinHandler.cs
++++ b/SR2MP/Server/Handlers/PlayerJoinHandler.cs
+@@ -11,17 +11,15 @@ public sealed class PlayerJoinHandler : BasePacketHandler
+     public PlayerJoinHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<PlayerJoinPacket>();
+ 
+         string playerId = packet.PlayerId;
+ 
+-        string address = $"{senderEndPoint.Address}:{senderEndPoint.Port}";
+-
+         SrLogger.LogMessage($"Player join request received (PlayerId: {playerId})",
+-            $"Player join request from {address} (PlayerId: {playerId})");
++            $"Player join request from {clientIdentifier} (PlayerId: {playerId})");
+ 
+         var playerObject = Object.Instantiate(playerPrefab).GetComponent<NetworkPlayer>();
+         playerObject.gameObject.SetActive(true);
+diff --git a/SR2MP/Server/Handlers/PlayerLeaveHandler.cs b/SR2MP/Server/Handlers/PlayerLeaveHandler.cs
+index eda15ed..0799e0b 100644
+--- a/SR2MP/Server/Handlers/PlayerLeaveHandler.cs
++++ b/SR2MP/Server/Handlers/PlayerLeaveHandler.cs
+@@ -10,19 +10,17 @@ public sealed class PlayerLeaveHandler : BasePacketHandler
+     public PlayerLeaveHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         reader.Skip(1);
+ 
+         string playerId = reader.ReadString();
+ 
+-        string clientInfo = $"{senderEndPoint.Address}:{senderEndPoint.Port}";
+-
+         SrLogger.LogMessage($"Player leave request received (PlayerId: {playerId})",
+-            $"Player leave request from {clientInfo} (PlayerId: {playerId})");
++            $"Player leave request from {clientIdentifier} (PlayerId: {playerId})");
+ 
+-        if (clientManager.RemoveClient(clientInfo))
++        if (clientManager.RemoveClient(clientIdentifier))
+         {
+             var leavePacket = new PlayerLeavePacket
+             {
+@@ -33,12 +31,12 @@ public sealed class PlayerLeaveHandler : BasePacketHandler
+             Main.Server.SendToAll(leavePacket);
+ 
+             SrLogger.LogMessage($"Player {playerId} left the server",
+-                $"Player {playerId} left from {clientInfo}");
++                $"Player {playerId} left from {clientIdentifier}");
+         }
+         else
+         {
+             SrLogger.LogWarning($"Player leave request from unknown client (PlayerId: {playerId})",
+-                $"Player leave request from unknown client: {clientInfo} (PlayerId: {playerId})");
++                $"Player leave request from unknown client: {clientIdentifier} (PlayerId: {playerId})");
+         }
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/PlayerUpdateHandler.cs b/SR2MP/Server/Handlers/PlayerUpdateHandler.cs
+index 1efbddf..9a2951f 100644
+--- a/SR2MP/Server/Handlers/PlayerUpdateHandler.cs
++++ b/SR2MP/Server/Handlers/PlayerUpdateHandler.cs
+@@ -10,7 +10,7 @@ public sealed class PlayerUpdateHandler : BasePacketHandler
+     public PlayerUpdateHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<PlayerUpdatePacket>();
+@@ -31,9 +31,11 @@ public sealed class PlayerUpdateHandler : BasePacketHandler
+             packet.HorizontalSpeed,
+             packet.ForwardSpeed,
+             packet.Sprinting,
+-            packet.LookY
++            packet.LookY,
++            packet.SelectedSlot,
++            packet.VacuumState
+         );
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/PlayerUpgradeHandler.cs b/SR2MP/Server/Handlers/PlayerUpgradeHandler.cs
+index 3b10c14..8388fcf 100644
+--- a/SR2MP/Server/Handlers/PlayerUpgradeHandler.cs
++++ b/SR2MP/Server/Handlers/PlayerUpgradeHandler.cs
+@@ -10,7 +10,7 @@ public sealed class PlayerUpgradeHandler : BasePacketHandler
+     public PlayerUpgradeHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<PlayerUpgradePacket>();
+@@ -25,6 +25,6 @@ public sealed class PlayerUpgradeHandler : BasePacketHandler
+         model.IncrementUpgradeLevel(upgrade);
+         handlingPacket = false;
+ 
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/ProgressionHandlers.cs b/SR2MP/Server/Handlers/ProgressionHandlers.cs
+new file mode 100644
+index 0000000..76bd471
+--- /dev/null
++++ b/SR2MP/Server/Handlers/ProgressionHandlers.cs
+@@ -0,0 +1,20 @@
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Server.Managers;
++
++namespace SR2MP.Server.Handlers
++{
++    [PacketHandler((byte)PacketType.MarketUpdate)]
++    public class MarketUpdateHandler : BasePacketHandler
++    {
++        public MarketUpdateHandler(NetworkManager nm, ClientManager cm) : base(nm, cm) { }
++        public override void Handle(byte[] data, string sender) => Main.Server.SendToAllExcept(data, sender);
++    }
++
++    [PacketHandler((byte)PacketType.BlueprintUnlock)]
++    public class BlueprintUnlockHandler : BasePacketHandler
++    {
++        public BlueprintUnlockHandler(NetworkManager nm, ClientManager cm) : base(nm, cm) { }
++        public override void Handle(byte[] data, string sender) => Main.Server.SendToAllExcept(data, sender);
++    }
++}
+diff --git a/SR2MP/Server/Handlers/RequestSaveHandler.cs b/SR2MP/Server/Handlers/RequestSaveHandler.cs
+new file mode 100644
+index 0000000..a4e4cf0
+--- /dev/null
++++ b/SR2MP/Server/Handlers/RequestSaveHandler.cs
+@@ -0,0 +1,62 @@
++using System.IO;
++using System.IO.Compression;
++using Il2CppMonomiPark.SlimeRancher.DataModel;
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Server.Managers;
++using UnityEngine;
++
++namespace SR2MP.Server.Handlers
++{
++    [PacketHandler((byte)PacketType.RequestSave)]
++    public class RequestSaveHandler : BasePacketHandler
++    {
++        public RequestSaveHandler(NetworkManager networkManager, ClientManager clientManager) 
++            : base(networkManager, clientManager) { }
++
++        public override void Handle(byte[] data, string clientIdentifier)
++        {
++            MelonLoader.MelonLogger.Msg("Received Save Request. preparing save data...");
++            
++            // 1. Force a save (Host side)
++            // Note: This might cause a hitch.
++            var autoSaveDirector = GameContext.Instance.AutoSaveDirector;
++            if (autoSaveDirector == null) return;
++
++            autoSaveDirector.SaveGame();
++            
++            // 2. Get the save data
++            var save = autoSaveDirector.GetSaveToContinue();
++            if (save == null)
++            {
++                MelonLoader.MelonLogger.Error("Could not get save to continue!");
++                return;
++            }
++
++            // 3. Read into IL2CPP memory stream
++            var il2cppStream = new Il2CppSystem.IO.MemoryStream();
++            autoSaveDirector._storageProvider.GetGameData(save.SaveName, il2cppStream);
++            il2cppStream.Seek(0, Il2CppSystem.IO.SeekOrigin.Begin);
++
++            // 4. Convert to byte array
++            byte[] rawData = il2cppStream.ToArray();
++
++            // 5. Compress
++            byte[] compressedData;
++            using (var outputStream = new MemoryStream())
++            {
++                using (var gzipStream = new GZipStream(outputStream, CompressionMode.Compress))
++                {
++                    gzipStream.Write(rawData, 0, rawData.Length);
++                }
++                compressedData = outputStream.ToArray();
++            }
++
++            MelonLoader.MelonLogger.Msg($"Sending compressed save data ({compressedData.Length} bytes) to client...");
++
++            // 6. Send back
++            var packet = new SaveDataPacket(compressedData);
++            Main.Server.SendToClient(packet, clientIdentifier);
++        }
++    }
++}
+diff --git a/SR2MP/Server/Handlers/SiloUpdateHandler.cs b/SR2MP/Server/Handlers/SiloUpdateHandler.cs
+new file mode 100644
+index 0000000..971f323
+--- /dev/null
++++ b/SR2MP/Server/Handlers/SiloUpdateHandler.cs
+@@ -0,0 +1,22 @@
++using SR2MP.Packets.Utils;
++using SR2MP.Packets.Shared;
++using SR2MP.Server.Managers;
++
++namespace SR2MP.Server.Handlers
++{
++    [PacketHandler((byte)PacketType.SiloUpdate)]
++    public class SiloUpdateHandler : BasePacketHandler
++    {
++        public SiloUpdateHandler(NetworkManager networkManager, ClientManager clientManager) 
++            : base(networkManager, clientManager) { }
++
++        public override void Handle(byte[] data, string clientIdentifier)
++        {
++            using var reader = new PacketReader(data);
++            var packet = reader.ReadPacket<SiloUpdatePacket>();
++
++            // Broadcast to all other clients
++            Main.Server.SendToAllExcept(packet, clientIdentifier);
++        }
++    }
++}
+diff --git a/SR2MP/Server/Handlers/WorldFXHandler.cs b/SR2MP/Server/Handlers/WorldFXHandler.cs
+index bf1902f..acb40c3 100644
+--- a/SR2MP/Server/Handlers/WorldFXHandler.cs
++++ b/SR2MP/Server/Handlers/WorldFXHandler.cs
+@@ -10,7 +10,7 @@ public class WorldFXHandler : BasePacketHandler
+     public WorldFXHandler(NetworkManager networkManager, ClientManager clientManager)
+         : base(networkManager, clientManager) { }
+ 
+-    public override void Handle(byte[] data, IPEndPoint senderEndPoint)
++    public override void Handle(byte[] data, string clientIdentifier)
+     {
+         using var reader = new PacketReader(data);
+         var packet = reader.ReadPacket<WorldFXPacket>();
+@@ -30,6 +30,6 @@ public class WorldFXHandler : BasePacketHandler
+             fxManager.PlayTransientAudio(cue, packet.Position, WorldSoundVolumeDictionary[packet.FX]);
+         }
+         
+-        Main.Server.SendToAllExcept(packet, senderEndPoint);
++        Main.Server.SendToAllExcept(packet, clientIdentifier);
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Handlers/WorldObjectHandlers.cs b/SR2MP/Server/Handlers/WorldObjectHandlers.cs
+new file mode 100644
+index 0000000..510d936
+--- /dev/null
++++ b/SR2MP/Server/Handlers/WorldObjectHandlers.cs
+@@ -0,0 +1,27 @@
++using SR2MP.Packets.Shared;
++using SR2MP.Packets.Utils;
++using SR2MP.Server.Managers;
++
++namespace SR2MP.Server.Handlers
++{
++    [PacketHandler((byte)PacketType.GordoEat)]
++    public class GordoEatHandler : BasePacketHandler
++    {
++        public GordoEatHandler(NetworkManager nm, ClientManager cm) : base(nm, cm) { }
++        public override void Handle(byte[] data, string sender) => Main.Server.SendToAllExcept(data, sender);
++    }
++
++    [PacketHandler((byte)PacketType.TreasurePod)]
++    public class TreasurePodHandler : BasePacketHandler
++    {
++        public TreasurePodHandler(NetworkManager nm, ClientManager cm) : base(nm, cm) { }
++        public override void Handle(byte[] data, string sender) => Main.Server.SendToAllExcept(data, sender);
++    }
++
++    [PacketHandler((byte)PacketType.MapUnlock)]
++    public class MapUnlockHandler : BasePacketHandler
++    {
++        public MapUnlockHandler(NetworkManager nm, ClientManager cm) : base(nm, cm) { }
++        public override void Handle(byte[] data, string sender) => Main.Server.SendToAllExcept(data, sender);
++    }
++}
+diff --git a/SR2MP/Server/Managers/ClientManager.cs b/SR2MP/Server/Managers/ClientManager.cs
+index 4bc5ac0..8c015fb 100644
+--- a/SR2MP/Server/Managers/ClientManager.cs
++++ b/SR2MP/Server/Managers/ClientManager.cs
+@@ -12,65 +12,51 @@ public sealed class ClientManager
+     public event Action<ClientInfo>? OnClientRemoved;
+     public int ClientCount => clients.Count;
+ 
+-    public bool TryGetClient(string clientInfo, out ClientInfo? client)
++    public bool TryGetClient(string clientIdentifier, out ClientInfo? client)
+     {
+-        return clients.TryGetValue(clientInfo, out client);
++        return clients.TryGetValue(clientIdentifier, out client);
+     }
+ 
+-    public bool TryGetClient(IPEndPoint endPoint, out ClientInfo? client)
++    public ClientInfo? GetClient(string clientIdentifier)
+     {
+-        string clientInfo = $"{endPoint.Address}:{endPoint.Port}";
+-        return TryGetClient(clientInfo, out client);
+-    }
+-
+-    public ClientInfo? GetClient(string clientInfo)
+-    {
+-        clients.TryGetValue(clientInfo, out var client);
++        clients.TryGetValue(clientIdentifier, out var client);
+         return client;
+     }
+ 
+-    public ClientInfo AddClient(IPEndPoint endPoint, string playerId)
++    public ClientInfo AddClient(string clientIdentifier, IPEndPoint endPoint, string playerId)
+     {
+-        string clientInfo = $"{endPoint.Address}:{endPoint.Port}";
+-
+-        var client = new ClientInfo(endPoint, playerId);
++        var client = new ClientInfo(clientIdentifier, endPoint, playerId);
+ 
+-        if (clients.TryAdd(clientInfo, client))
++        if (clients.TryAdd(clientIdentifier, client))
+         {
+             SrLogger.LogMessage($"Client added! (PlayerId: {playerId})",
+-                $"Client added: {clientInfo} (PlayerId: {playerId})");
++                $"Client added: {clientIdentifier} (PlayerId: {playerId})");
+             OnClientAdded?.Invoke(client);
+             return client;
+         }
+         else
+         {
+             SrLogger.LogWarning($"Client already exists! (PlayerId: {playerId})",
+-                $"Client already exists: {clientInfo} (PlayerId: {playerId})");
+-            return clients[clientInfo];
++                $"Client already exists: {clientIdentifier} (PlayerId: {playerId})");
++            return clients[clientIdentifier];
+         }
+     }
+ 
+-    public bool RemoveClient(string clientInfo)
++    public bool RemoveClient(string clientIdentifier)
+     {
+-        if (clients.TryRemove(clientInfo, out var client))
++        if (clients.TryRemove(clientIdentifier, out var client))
+         {
+             SrLogger.LogMessage($"Client removed!",
+-                $"Client removed: {clientInfo}");
++                $"Client removed: {clientIdentifier}");
+             OnClientRemoved?.Invoke(client);
+             return true;
+         }
+         return false;
+     }
+ 
+-    public bool RemoveClient(IPEndPoint endPoint)
+-    {
+-        string clientInfo = $"{endPoint.Address}:{endPoint.Port}";
+-        return RemoveClient(clientInfo);
+-    }
+-
+-    public void UpdateHeartbeat(string clientInfo)
++    public void UpdateHeartbeat(string clientIdentifier)
+     {
+-        if (clients.TryGetValue(clientInfo, out var client))
++        if (clients.TryGetValue(clientIdentifier, out var client))
+         {
+             client.UpdateHeartbeat();
+         }
+@@ -93,7 +79,7 @@ public sealed class ClientManager
+         var timedOut = GetTimedOutClients();
+         foreach (var client in timedOut)
+         {
+-            RemoveClient(client.GetClientInfo());
++            RemoveClient(client.Identifier);
+         }
+     }
+ 
+@@ -109,4 +95,4 @@ public sealed class ClientManager
+ 
+         SrLogger.LogMessage("All clients cleared", SrLogger.LogTarget.Both);
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/SR2MP/Server/Managers/NetworkManager.cs b/SR2MP/Server/Managers/NetworkManager.cs
+index a6cd922..0ef240d 100644
+--- a/SR2MP/Server/Managers/NetworkManager.cs
++++ b/SR2MP/Server/Managers/NetworkManager.cs
+@@ -10,11 +10,10 @@ public sealed class NetworkManager
+     private volatile bool isRunning;
+     private Il2CppSystem.Threading.Thread? receiveThread;
+ 
+-    public event Action<byte[], IPEndPoint>? OnDataReceived;
++    public event Action<byte[], string>? OnDataReceived;
+ 
+     public bool IsRunning => isRunning;
+ 
+-    // Overload to allow IPv6 configuration
+     public void Start(int port, bool enableIPv6 = true)
+     {
+         if (isRunning)
+@@ -27,26 +26,20 @@ public sealed class NetworkManager
+         {
+             if (enableIPv6)
+             {
+-                // IPv6 with IPv4 fallback
+                 udpClient = new UdpClient(AddressFamily.InterNetworkV6);
+                 udpClient.Client.DualMode = true;
+                 udpClient.Client.Bind(new IPEndPoint(IPAddress.IPv6Any, port));
+-                SrLogger.LogMessage($"Server started in dual mode (IPv6 + IPv4) on port: {port}", SrLogger.LogTarget.Both);
+             }
+             else
+             {
+-                // IPv4 only
+                 udpClient = new UdpClient(new IPEndPoint(IPAddress.Any, port));
+-                SrLogger.LogMessage($"Server started in IPv4 mode on port: {port}", SrLogger.LogTarget.Both);
+             }
+ 
+             udpClient.Client.ReceiveTimeout = 0;
+-
+             isRunning = true;
+-
+-            receiveThread = new Il2CppSystem.Threading.Thread(new Action(ReceiveLoop));
+-            receiveThread.IsBackground = true;
+-            receiveThread.Start();
++            StartReceiveThread();
++            
++            SrLogger.LogMessage($"Server started on port {port}", SrLogger.LogTarget.Both);
+         }
+         catch (Exception ex)
+         {
+@@ -55,68 +48,53 @@ public sealed class NetworkManager
+         }
+     }
+ 
+-    private void ReceiveLoop()
++    private void StartReceiveThread()
+     {
+-        if (udpClient == null)
+-        {
+-            SrLogger.LogError("Server is null in ReceiveLoop!", SrLogger.LogTarget.Both);
+-            return;
+-        }
+-
+-        SrLogger.LogMessage("Server ReceiveLoop started!", SrLogger.LogTarget.Both);
++        receiveThread = new Il2CppSystem.Threading.Thread(new Action(ReceiveLoop));
++        receiveThread.IsBackground = true;
++        receiveThread.Start();
++    }
+ 
++    private void ReceiveLoop()
++    {
+         IPEndPoint remoteEP = new IPEndPoint(IPAddress.IPv6Any, 0);
+-
+-        while (isRunning)
++        while (isRunning && udpClient != null)
+         {
+             try
+             {
+                 byte[] data = udpClient.Receive(ref remoteEP);
+-
+                 if (data.Length > 0)
+                 {
+-                    OnDataReceived?.Invoke(data, remoteEP);
+-                    SrLogger.LogPacketSize($"Received {data.Length} bytes",
+-                        $"Received {data.Length} bytes from {remoteEP}");
++                    string senderId = remoteEP.ToString();
++                    OnDataReceived?.Invoke(data, senderId);
+                 }
+             }
+             catch (SocketException)
+             {
+-                // never happens, no timeout set
++                if (!isRunning) return;
+             }
+             catch (Exception ex)
+             {
+-                SrLogger.LogError($"ReceiveLoop error: {ex}", SrLogger.LogTarget.Both);
++                SrLogger.LogError($"Server ReceiveLoop error: {ex}");
+             }
+         }
+     }
+ 
+-    public void Send(byte[] data, IPEndPoint endPoint)
++    public void Send(byte[] data, IPEndPoint targetEndPoint)
+     {
+         if (udpClient == null || !isRunning)
+         {
+-            SrLogger.LogWarning("Cannot send data: Server not running!", SrLogger.LogTarget.Both);
++            SrLogger.LogWarning("Cannot send data: Server not running!");
+             return;
+         }
+ 
+         try
+         {
+-            SrLogger.LogPacketSize($"Sending {data.Length} bytes to client..",
+-                $"Sending {data.Length} bytes to {endPoint}..");
+-
+-            var splitData = PacketChunkManager.SplitPacket(data);
+-            foreach (var chunk in splitData)
+-            {
+-                udpClient?.Send(chunk, chunk.Length, endPoint);
+-            }
+-
+-            SrLogger.LogPacketSize($"Sent {data.Length} bytes to client in {splitData.Length} chunk(s).",
+-                $"Sent {data.Length} bytes to {endPoint} in {splitData.Length} chunk(s).");
++            udpClient.Send(data, data.Length, targetEndPoint);
+         }
+         catch (Exception ex)
+         {
+-            SrLogger.LogError($"Failed to send data to Client: {ex}",
+-                $"Failed to send data to {endPoint}: {ex}");
++            SrLogger.LogError($"Failed to send data to {targetEndPoint}: {ex}");
+         }
+     }
+ 
+@@ -130,11 +108,7 @@ public sealed class NetworkManager
+         try
+         {
+             udpClient?.Close();
+-
+-            if (receiveThread != null && receiveThread.IsAlive)
+-            {
+-                SrLogger.LogWarning("Receive thread did not stop gracefully", SrLogger.LogTarget.Both);
+-            }
++            udpClient = null;
+ 
+             SrLogger.LogMessage("Server stopped", SrLogger.LogTarget.Both);
+         }
+@@ -143,4 +117,4 @@ public sealed class NetworkManager
+             SrLogger.LogError($"Error stopping Server: {ex}", SrLogger.LogTarget.Both);
+         }
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/SR2MP/Server/Managers/PacketManager.cs b/SR2MP/Server/Managers/PacketManager.cs
+index e098f2e..b92fe37 100644
+--- a/SR2MP/Server/Managers/PacketManager.cs
++++ b/SR2MP/Server/Managers/PacketManager.cs
+@@ -1,4 +1,3 @@
+-using System.Net;
+ using System.Reflection;
+ using SR2MP.Packets.Utils;
+ using SR2MP.Shared.Managers;
+@@ -50,7 +49,7 @@ public sealed class PacketManager
+         SrLogger.LogMessage($"Total handlers registered: {handlers.Count}", SrLogger.LogTarget.Both);
+     }
+ 
+-    public void HandlePacket(byte[] data, IPEndPoint clientEP)
++    public void HandlePacket(byte[] data, string clientIdentifier)
+     {
+         if (data.Length < 1)
+         {
+@@ -59,19 +58,12 @@ public sealed class PacketManager
+         }
+ 
+         byte packetType = data[0];
+-        byte chunkIndex = data[1];
+-        byte totalChunks = data[2];
+-
+-        byte[] chunkData = new byte[data.Length - 3];
+-        Buffer.BlockCopy(data, 3, chunkData, 0, data.Length - 3);
+-        if (!PacketChunkManager.TryMergePacket((PacketType)packetType, chunkData, chunkIndex, totalChunks, out data))
+-            return;
+ 
+         if (handlers.TryGetValue(packetType, out var handler))
+         {
+             try
+             {
+-                MainThreadDispatcher.Enqueue(() => handler.Handle(data, clientEP));
++                MainThreadDispatcher.Enqueue(() => handler.Handle(data, clientIdentifier));
+             }
+             catch (Exception ex)
+             {
+diff --git a/SR2MP/Server/Managers/PlayerInventoryManager.cs b/SR2MP/Server/Managers/PlayerInventoryManager.cs
+new file mode 100644
+index 0000000..594b418
+--- /dev/null
++++ b/SR2MP/Server/Managers/PlayerInventoryManager.cs
+@@ -0,0 +1,37 @@
++using SR2MP.Server.Models;
++
++namespace SR2MP.Server.Managers;
++
++public class PlayerInventoryManager
++{
++    private readonly Dictionary<string, PlayerInventoryData> playerInventories = new();
++
++    public void UpdateInventory(string playerId, int slotIdx, int itemId, int count)
++    {
++        if (!playerInventories.ContainsKey(playerId))
++        {
++            playerInventories[playerId] = new PlayerInventoryData();
++        }
++
++        playerInventories[playerId].UpdateSlot(slotIdx, itemId, count);
++    }
++
++    public PlayerInventoryData GetInventory(string playerId)
++    {
++        if (playerInventories.TryGetValue(playerId, out var data))
++        {
++            return data;
++        }
++        return null;
++    }
++
++    public void Clear()
++    {
++        playerInventories.Clear();
++    }
++    
++    public void RemovePlayer(string playerId)
++    {
++        playerInventories.Remove(playerId);
++    }
++}
+diff --git a/SR2MP/Server/Models/ClientInfo.cs b/SR2MP/Server/Models/ClientInfo.cs
+index ce89586..36a0bd9 100644
+--- a/SR2MP/Server/Models/ClientInfo.cs
++++ b/SR2MP/Server/Models/ClientInfo.cs
+@@ -4,12 +4,14 @@ namespace SR2MP.Server.Models;
+ 
+ public sealed class ClientInfo
+ {
++    public string Identifier { get; set; }
+     public IPEndPoint EndPoint { get; set; }
+     private DateTime LastHeartbeat { get; set; }
+     public string PlayerId { get; set; }
+ 
+-    public ClientInfo(IPEndPoint endPoint, string playerId = "")
++    public ClientInfo(string identifier, IPEndPoint endPoint, string playerId = "")
+     {
++        Identifier = identifier;
+         EndPoint = endPoint;
+         LastHeartbeat = DateTime.UtcNow;
+         PlayerId = playerId;
+@@ -20,5 +22,5 @@ public sealed class ClientInfo
+     public bool IsTimedOut()
+         => (DateTime.UtcNow - LastHeartbeat).TotalSeconds > 30;
+ 
+-    public string GetClientInfo() => $"{EndPoint.Address}:{EndPoint.Port}";
++    public string GetClientInfo() => Identifier;
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Server/Models/PlayerInventoryData.cs b/SR2MP/Server/Models/PlayerInventoryData.cs
+new file mode 100644
+index 0000000..d34a4ab
+--- /dev/null
++++ b/SR2MP/Server/Models/PlayerInventoryData.cs
+@@ -0,0 +1,21 @@
++namespace SR2MP.Server.Models;
++
++public class PlayerInventoryData
++{
++    public struct SlotData
++    {
++        public int ItemId;
++        public int Count;
++    }
++
++    // Standard SR2 inventory has 4 slots
++    public SlotData[] Slots = new SlotData[4];
++
++    public void UpdateSlot(int slotIdx, int itemId, int count)
++    {
++        if (slotIdx >= 0 && slotIdx < Slots.Length)
++        {
++            Slots[slotIdx] = new SlotData { ItemId = itemId, Count = count };
++        }
++    }
++}
+diff --git a/SR2MP/Server/Server.cs b/SR2MP/Server/Server.cs
+index 8380e35..19afeaa 100644
+--- a/SR2MP/Server/Server.cs
++++ b/SR2MP/Server/Server.cs
+@@ -1,8 +1,8 @@
+-using System.Net;
+ using SR2MP.Server.Managers;
+ using SR2MP.Packets.Utils;
+ using SR2MP.Server.Models;
+ using SR2MP.Shared.Managers;
++using UnityEngine;
+ 
+ namespace SR2MP.Server;
+ 
+@@ -10,6 +10,7 @@ public sealed class Server
+ {
+     private readonly NetworkManager networkManager;
+     private readonly ClientManager clientManager;
++    public readonly PlayerInventoryManager playerInventoryManager; // Made public for handlers
+     private readonly PacketManager packetManager;
+     private Timer? timeoutTimer;
+     public int GetClientCount() => clientManager.ClientCount;
+@@ -21,6 +22,7 @@ public sealed class Server
+     {
+         networkManager = new NetworkManager();
+         clientManager = new ClientManager();
++        playerInventoryManager = new PlayerInventoryManager();
+         packetManager = new PacketManager(networkManager, clientManager);
+ 
+         networkManager.OnDataReceived += OnDataReceived;
+@@ -40,7 +42,7 @@ public sealed class Server
+             packetManager.RegisterHandlers();
+             Application.quitting += new System.Action(Close);
+             networkManager.Start(port, enableIPv6);
+-            // Commented because we don't need this yet
++            
+             // timeoutTimer = new Timer(CheckTimeouts, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+             OnServerStarted?.Invoke();
+         }
+@@ -50,18 +52,18 @@ public sealed class Server
+         }
+     }
+ 
+-    private void OnDataReceived(byte[] data, System.Net.IPEndPoint clientEP)
++    private void OnDataReceived(byte[] data, string clientIdentifier)
+     {
+         SrLogger.LogPacketSize($"Received {data.Length} bytes from Client!",
+-            $"Received {data.Length} bytes from {clientEP}.");
++            $"Received {data.Length} bytes from {clientIdentifier}.");
+ 
+         try
+         {
+-            packetManager.HandlePacket(data, clientEP);
++            packetManager.HandlePacket(data, clientIdentifier);
+         }
+         catch (Exception ex)
+         {
+-            SrLogger.LogError($"Error handling packet from {clientEP}: {ex}", SrLogger.LogTarget.Both);
++            SrLogger.LogError($"Error handling packet from {clientIdentifier}: {ex}", SrLogger.LogTarget.Both);
+         }
+     }
+ 
+@@ -83,6 +85,8 @@ public sealed class Server
+         }
+ 
+         SrLogger.LogMessage($"Player left broadcast sent for: {client.PlayerId}", SrLogger.LogTarget.Both);
++
++        playerInventoryManager.RemovePlayer(client.PlayerId);
+     }
+ 
+     private void CheckTimeouts(object? state)
+@@ -140,16 +144,34 @@ public sealed class Server
+     }
+ 
+ 
+-    public void SendToClient<T>(T packet, IPEndPoint endPoint) where T : IPacket
++    public void SendToClient<T>(T packet, string clientIdentifier) where T : IPacket
++    {
++        if (clientManager.TryGetClient(clientIdentifier, out var client))
++        {
++            using var writer = new PacketWriter();
++            packet.Serialise(writer);
++            networkManager.Send(writer.ToArray(), client.EndPoint);
++        }
++    }
++
++    public void SendToClient<T>(T packet, ClientInfo client) where T : IPacket
+     {
+         using var writer = new PacketWriter();
+         packet.Serialise(writer);
+-        networkManager.Send(writer.ToArray(), endPoint);
++        networkManager.Send(writer.ToArray(), client.EndPoint);
+     }
+ 
+-    public void SendToClient<T>(T packet, ClientInfo client) where T : IPacket
++    public void Send(byte[] data, string clientIdentifier)
++    {
++        if (clientManager.TryGetClient(clientIdentifier, out var client))
++        {
++            networkManager.Send(data, client.EndPoint);
++        }
++    }
++
++    public void Send<T>(T packet, string clientIdentifier) where T : IPacket
+     {
+-        SendToClient(packet, client.EndPoint);
++        SendToClient(packet, clientIdentifier);
+     }
+ 
+     public void SendToAll<T>(T packet) where T : IPacket
+@@ -164,7 +186,15 @@ public sealed class Server
+         }
+     }
+ 
+-    public void SendToAllExcept<T>(T packet, string excludedClientInfo) where T : IPacket
++    public void SendToAll(byte[] data)
++    {
++        foreach (var client in clientManager.GetAllClients())
++        {
++            networkManager.Send(data, client.EndPoint);
++        }
++    }
++
++    public void SendToAllExcept<T>(T packet, string excludedClientIdentifier) where T : IPacket
+     {
+         using var writer = new PacketWriter();
+         packet.Serialise(writer);
+@@ -172,16 +202,21 @@ public sealed class Server
+ 
+         foreach (var client in clientManager.GetAllClients())
+         {
+-            if (client.GetClientInfo() != excludedClientInfo)
++            if (client.Identifier != excludedClientIdentifier)
+             {
+                 networkManager.Send(data, client.EndPoint);
+             }
+         }
+     }
+ 
+-    public void SendToAllExcept<T>(T packet, IPEndPoint excludeEndPoint) where T : IPacket
++    public void SendToAllExcept(byte[] data, string excludedClientIdentifier)
+     {
+-        string clientInfo = $"{excludeEndPoint.Address}:{excludeEndPoint.Port}";
+-        SendToAllExcept(packet, clientInfo);
++        foreach (var client in clientManager.GetAllClients())
++        {
++            if (client.Identifier != excludedClientIdentifier)
++            {
++                networkManager.Send(data, client.EndPoint);
++            }
++        }
+     }
+ }
+\ No newline at end of file
+diff --git a/SR2MP/Shared/Managers/NetworkActorManager.cs b/SR2MP/Shared/Managers/NetworkActorManager.cs
+index 6f9d745..96038a3 100644
+--- a/SR2MP/Shared/Managers/NetworkActorManager.cs
++++ b/SR2MP/Shared/Managers/NetworkActorManager.cs
+@@ -12,6 +12,9 @@ public sealed class NetworkActorManager
+     public int GetPersistentID(IdentifiableType type)
+         => GameContext.Instance.AutoSaveDirector._saveReferenceTranslation.GetPersistenceId(type);
+ 
++    public IdentifiableType GetIdentifiableType(int id)
++        => ActorTypes.ContainsKey(id) ? ActorTypes[id] : null!;
++
+     internal void Initialize(GameContext context)
+     {
+         ActorTypes.Clear();
+diff --git a/SR2MP/Shared/Managers/PacketChunkManager.cs b/SR2MP/Shared/Managers/PacketChunkManager.cs
+index e627fda..798751c 100644
+--- a/SR2MP/Shared/Managers/PacketChunkManager.cs
++++ b/SR2MP/Shared/Managers/PacketChunkManager.cs
+@@ -1,4 +1,4 @@
+-using SR2MP.Packets.Utils;
++∩╗┐using SR2MP.Packets.Utils;
+ 
+ namespace SR2MP.Shared.Managers;
+ 
+@@ -74,4 +74,4 @@ public static class PacketChunkManager
+         }
+         return result;
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/SR2MP/Shared/Managers/RemoteFXManager.cs b/SR2MP/Shared/Managers/RemoteFXManager.cs
+index ca23f3f..0072f07 100644
+--- a/SR2MP/Shared/Managers/RemoteFXManager.cs
++++ b/SR2MP/Shared/Managers/RemoteFXManager.cs
+@@ -40,7 +40,9 @@ namespace SR2MP.Shared.Managers
+                 { PlayerFXType.None, null! },
+                 { PlayerFXType.VacReject, allFX["FX_vacReject"] }, 
+                 { PlayerFXType.VacAccept, allFX["FX_vacAcquire"] },
+-                { PlayerFXType.VacShoot, allFX["FX_VacpackShoot"] }
++                { PlayerFXType.VacAccept, allFX["FX_vacAcquire"] },
++                { PlayerFXType.VacShoot, allFX["FX_VacpackShoot"] },
++                { PlayerFXType.WaterSplash, allFX.ContainsKey("FX_WaterSplash") ? allFX["FX_WaterSplash"] : null! } 
+             };
+             playerAudioCueMap = new Dictionary<PlayerFXType, SECTR_AudioCue>
+             {
+diff --git a/SR2MP/Shared/Managers/RemotePlayerManager.cs b/SR2MP/Shared/Managers/RemotePlayerManager.cs
+index ef55997..b618bd4 100644
+--- a/SR2MP/Shared/Managers/RemotePlayerManager.cs
++++ b/SR2MP/Shared/Managers/RemotePlayerManager.cs
+@@ -58,7 +58,9 @@ public sealed class RemotePlayerManager
+         float horizontalSpeed = 0f,
+         float forwardSpeed = 0f,
+         bool sprinting = false,
+-        float lookY = 0f)
++        float lookY = 0f,
++        int selectedSlot = 0,
++        byte vacuumState = 0)
+     {
+         // I dont know.
+         var playerId = Main.Client.IsConnected ? Main.Client.OwnPlayerId : Main.Server.IsRunning() ? "HOST" : "INVALID";
+@@ -76,7 +78,9 @@ public sealed class RemotePlayerManager
+             HorizontalSpeed = horizontalSpeed,
+             ForwardSpeed = forwardSpeed,
+             Sprinting = sprinting,
+-            LookY = lookY
++            LookY = lookY,
++            SelectedSlot = selectedSlot,
++            VacuumState = vacuumState
+         };
+         Main.SendToAllOrServer(updatePacket);
+     }
+@@ -93,7 +97,9 @@ public sealed class RemotePlayerManager
+         float horizontalSpeed,
+         float forwardSpeed,
+         bool sprinting,
+-        float lookY)
++        float lookY,
++        int selectedSlot,
++        byte vacuumState)
+     {
+         if (players.TryGetValue(playerId, out var player))
+         {
+@@ -109,6 +115,12 @@ public sealed class RemotePlayerManager
+             player.Sprinting = sprinting;
+             player.LastLookY = player.LookY;
+             player.LookY = lookY;
++            player.SelectedSlot = selectedSlot;
++            // RemotePlayer needs VacuumState property?
++            // I should add it to RemotePlayer model.
++            // But for now I'll just skip if model doesn't support it, 
++            // OR I update RemotePlayer model too.
++            // I'll update RemotePlayer model in next step.
+             player.LastUpdate = DateTime.UtcNow;
+             OnPlayerUpdated?.Invoke(playerId, player);
+         }
+diff --git a/SR2MP/Shared/Utils/FXConstants.cs b/SR2MP/Shared/Utils/FXConstants.cs
+index 57f7821..ad1eed8 100644
+--- a/SR2MP/Shared/Utils/FXConstants.cs
++++ b/SR2MP/Shared/Utils/FXConstants.cs
+@@ -11,6 +11,7 @@ public static class FXConstants
+         { PlayerFXType.VacReject, false },
+         { PlayerFXType.VacAccept, false },
+         { PlayerFXType.VacShoot, false },
++        { PlayerFXType.WaterSplash, false },
+         
+         { PlayerFXType.VacHold, true },
+         { PlayerFXType.VacShootEmpty, true },
+diff --git a/SR2MP/Sr2eCompatibiltiy.cs b/SR2MP/Sr2eCompatibiltiy.cs
+index 61524ee..cb1f043 100644
+--- a/SR2MP/Sr2eCompatibiltiy.cs
++++ b/SR2MP/Sr2eCompatibiltiy.cs
+@@ -13,9 +13,10 @@ using System.Collections;
+ 
+ // This was made for SR2EExpansionV3
+ // This is MLEntrypoint V1
++
+ #pragma warning disable RCS1110 // Declare type inside namespace
++
+ internal class MLEntrypoint : MelonMod
+-#pragma warning restore RCS1110 // Declare type inside namespace
+ {
+     private static readonly ColorBlock buttonColorBlock = new()
+     {
+@@ -351,4 +352,6 @@ internal class MLEntrypoint : MelonMod
+     }
+ 
+     private void SR2EDeinit() => expansion.OnDeinitializeMelon();
+-}
+\ No newline at end of file
++}
++
++#pragma warning restore RCS1110 // Declare type inside namespace

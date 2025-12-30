@@ -51,19 +51,20 @@ public sealed class ClientPacketManager
 
     public void HandlePacket(byte[] data)
     {
-        if (data.Length < 3)
+        if (data.Length < 9)
         {
             SrLogger.LogWarning("Received packet too small for chunk header", SrLogger.LogTarget.Both);
             return;
         }
 
         byte packetType = data[0];
-        byte chunkIndex = data[1];
-        byte totalChunks = data[2];
+        
+        int chunkIndex = data[1] | (data[2] << 8) | (data[3] << 16) | (data[4] << 24);
+        int totalChunks = data[5] | (data[6] << 8) | (data[7] << 16) | (data[8] << 24);
 
-        // Slice payload (remove 3 header bytes)
-        var payload = new byte[data.Length - 3];
-        Buffer.BlockCopy(data, 3, payload, 0, data.Length - 3);
+        // Slice payload (remove 9 header bytes)
+        var payload = new byte[data.Length - 9];
+        Buffer.BlockCopy(data, 9, payload, 0, data.Length - 9);
 
         if (PacketChunkManager.TryMergePacket((PacketType)packetType, payload, chunkIndex, totalChunks, "Server", out var fullData))
         {
