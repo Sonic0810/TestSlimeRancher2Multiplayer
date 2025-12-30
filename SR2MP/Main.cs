@@ -88,6 +88,9 @@ public sealed class Main : SR2EExpansionV3
                 break;
         }
 
+        // Debug logging for join finalization
+        SrLogger.LogMessage($"OnSceneWasLoaded: scene={sceneName}, IsLoadingMultiplayerSave={IsLoadingMultiplayerSave}, Client.PendingJoin={(Client?.PendingJoin != null ? "SET" : "NULL")}");
+
         if (IsLoadingMultiplayerSave && !sceneName.Equals("MainMenuEnvironment") && !sceneName.Equals("SystemCore") && !sceneName.Equals("LoadScene"))
         {
             if (Client != null && Client.PendingJoin != null)
