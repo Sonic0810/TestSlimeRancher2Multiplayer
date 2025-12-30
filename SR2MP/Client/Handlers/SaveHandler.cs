@@ -53,6 +53,9 @@ namespace SR2MP.Client.Handlers
                 var autoSaveDirector = GameContext.Instance.AutoSaveDirector;
                 if (autoSaveDirector != null)
                 {
+                     // Set flag BEFORE BeginLoad so OnSceneWasLoaded hook triggers
+                     Main.IsLoadingMultiplayerSave = true;
+                     
                      // BeginLoad takes (GameSaveIdentifier, Stream)
                      // Based on Logic, we just feed it the stream and identifier.
                      autoSaveDirector.BeginLoad(gsi, memoryStream);
