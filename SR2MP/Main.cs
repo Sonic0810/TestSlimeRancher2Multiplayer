@@ -13,6 +13,7 @@ using System.Collections.Generic;
 
 using Il2CppMonomiPark.SlimeRancher.Economy;
 using Il2CppMonomiPark.SlimeRancher.Player.CharacterController;
+using Il2CppMonomiPark.SlimeRancher.Script.UI.Pause;
 using SR2MP.Server;
 using SR2MP.Client;
 
@@ -164,23 +165,33 @@ public sealed class Main : SR2EExpansionV3
                     SrLogger.LogMessage($"Teleported player to fallback position: {player.transform.position}", SrLogger.LogTarget.Both);
                 }
                 
-                // Diagnose input state
+                // Fix paused state after save load
                 var inputDirector = GameContext.Instance?.InputDirector;
                 if (inputDirector != null)
                 {
                     bool pausedEnabled = inputDirector._paused?.Map?.enabled ?? false;
                     SrLogger.LogMessage($"InputDirector paused map enabled: {pausedEnabled}", SrLogger.LogTarget.Both);
                     
-                    // If pause input is enabled, player might be in paused state
-                    if (pausedEnabled)
+                    // If game is paused after save load, unpause it
+                    if (pausedEnabled && inputDirector._paused?.Map != null)
                     {
-                        SrLogger.LogWarning("Game appears to be in paused state after save load!", SrLogger.LogTarget.Both);
+                        SrLogger.LogMessage("Game is paused after save load - disabling pause map...", SrLogger.LogTarget.Both);
+                        
+                        // Disable pause input map directly
+                        inputDirector._paused.Map.Disable();
+                        SrLogger.LogMessage("Disabled pause input map!", SrLogger.LogTarget.Both);
+                        
+                        // Set time scale to 1 to ensure game runs
+                        UnityEngine.Time.timeScale = 1f;
+                        SrLogger.LogMessage("Set TimeScale to 1!", SrLogger.LogTarget.Both);
                     }
                 }
                 else
                 {
                     SrLogger.LogWarning("InputDirector is null!", SrLogger.LogTarget.Both);
                 }
+
+
                 
                 // Check player controller
                 var controller = player.GetComponent<SRCharacterController>();
