@@ -159,6 +159,20 @@ public sealed class Main : SR2EExpansionV3
 
         try
         {
+            // Force disable scene load in progress if it got stuck (via reflection)
+            var sceneLoader = SystemContext.Instance?.SceneLoader;
+            if (sceneLoader != null)
+            {
+                foreach (var field in sceneLoader.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (field.Name.ToLower().Contains("sceneloadinprogress"))
+                    {
+                        field.SetValue(sceneLoader, false);
+                        SrLogger.LogMessage($"Forced field {field.Name} to false on SceneLoader.", SrLogger.LogTarget.Both);
+                    }
+                }
+            }
+
             var player = SceneContext.Instance?.Player;
             if (player != null)
             {
@@ -172,12 +186,12 @@ public sealed class Main : SR2EExpansionV3
                 var spawnPoint = GameObject.Find("PlayerSpawnPoint");
                 if (spawnPoint != null)
                 {
-                    player.transform.position = spawnPoint.transform.position + Vector3.up * 1.5f;
+                    player.transform.position = spawnPoint.transform.position + Vector3.up * 2f;
                     SrLogger.LogMessage($"Teleported player to spawn point: {player.transform.position}", SrLogger.LogTarget.Both);
                 }
                 else
                 {
-                    player.transform.position = new Vector3(-70f, 13f, 2f);
+                    player.transform.position = new Vector3(-70f, 15f, 2f);
                     SrLogger.LogMessage($"Teleported player to fallback position: {player.transform.position}", SrLogger.LogTarget.Both);
                 }
             }
@@ -198,20 +212,48 @@ public sealed class Main : SR2EExpansionV3
             var inputDirector = GameContext.Instance?.InputDirector;
             if (inputDirector != null)
             {
-                bool pausedEnabled = inputDirector._paused?.Map?.enabled ?? false;
-                SrLogger.LogMessage($"Post-Join Input State: Paused={pausedEnabled}", SrLogger.LogTarget.Both);
-                
-                if (pausedEnabled)
+                // Disable all pause-related maps
+                if (inputDirector._paused?.Map != null)
                 {
-                    SrLogger.LogMessage("Forcing game unpause...", SrLogger.LogTarget.Both);
                     inputDirector._paused.Map.Disable();
-                    
-                    // Try to find the pause menu root and disable it if it exists
-                    var pauseMenu = GameObject.Find("PauseMenu") ?? GameObject.Find("PauseMenuDirector");
-                    if (pauseMenu != null)
+                    SrLogger.LogMessage("Disabled pause input map.", SrLogger.LogTarget.Both);
+                }
+
+                // Deactivate potential blocking UIs
+                string[] uiNames = { "PauseMenu", "PauseMenuDirector", "LoadingOverlay", "LoadScene", "LoadingCanvas", "ModSMLoadingScreen" };
+                foreach (var name in uiNames)
+                {
+                    var ui = GameObject.Find(name);
+                    if (ui != null)
                     {
-                        pauseMenu.SetActive(false);
-                        SrLogger.LogMessage("Deactivated Pause Menu object.", SrLogger.LogTarget.Both);
+                        ui.SetActive(false);
+                        SrLogger.LogMessage($"Deactivated UI: {name}", SrLogger.LogTarget.Both);
+                    }
+                }
+
+                // Attempt to find and enable a gameplay-like map via reflection
+                foreach (var field in inputDirector.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    if (field.Name.ToLower().Contains("gameplay") || field.Name.ToLower().Contains("default") || field.Name.ToLower().Contains("player"))
+                    {
+                        var mapObj = field.GetValue(inputDirector);
+                        if (mapObj != null)
+                        {
+                            var mapProperty = mapObj.GetType().GetProperty("Map") ?? mapObj.GetType().GetProperty("map");
+                            if (mapProperty != null)
+                            {
+                                var map = mapProperty.GetValue(mapObj);
+                                if (map != null)
+                                {
+                                    var enableMethod = map.GetType().GetMethod("Enable");
+                                    if (enableMethod != null)
+                                    {
+                                        enableMethod.Invoke(map, null);
+                                        SrLogger.LogMessage($"Enabled input map via reflection: {field.Name}", SrLogger.LogTarget.Both);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -223,6 +265,8 @@ public sealed class Main : SR2EExpansionV3
             SrLogger.LogError($"Post-Teleport Error: {ex}", SrLogger.LogTarget.Both);
         }
     }
+
+
 
 
 
