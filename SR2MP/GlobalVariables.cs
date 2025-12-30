@@ -4,7 +4,7 @@ namespace SR2MP;
 
 public static class GlobalVariables
 {
-    internal static GameObject playerPrefab;
+    public static GameObject playerPrefab;
 
     public static Dictionary<string, GameObject> playerObjects = new();
 
