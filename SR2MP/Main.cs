@@ -132,9 +132,49 @@ public sealed class Main : SR2EExpansionV3
                 Client.NotifyConnected();
 
                 Client.PendingJoin = null;
+                
+                // Teleport player to valid spawn point after a short delay
+                // This fixes the player spawning under the map due to save loading
+                MelonLoader.MelonCoroutines.Start(TeleportPlayerAfterDelay());
             }
         }
     }
+    
+    private static System.Collections.IEnumerator TeleportPlayerAfterDelay()
+    {
+        // Wait a bit for the world to fully load
+        yield return new WaitForSeconds(2f);
+        
+        try
+        {
+            var player = SceneContext.Instance?.Player;
+            if (player != null)
+            {
+                // Try to find the conservatory spawn point
+                var spawnPoint = GameObject.Find("PlayerSpawnPoint");
+                if (spawnPoint != null)
+                {
+                    player.transform.position = spawnPoint.transform.position + Vector3.up * 1f;
+                    SrLogger.LogMessage($"Teleported player to spawn point: {player.transform.position}", SrLogger.LogTarget.Both);
+                }
+                else
+                {
+                    // Fallback: teleport to a known safe position (conservatory default)
+                    player.transform.position = new Vector3(-70f, 12f, 2f); // Approximate conservatory spawn
+                    SrLogger.LogMessage($"Teleported player to fallback position: {player.transform.position}", SrLogger.LogTarget.Both);
+                }
+            }
+            else
+            {
+                SrLogger.LogWarning("Could not find player to teleport!", SrLogger.LogTarget.Both);
+            }
+        }
+        catch (Exception ex)
+        {
+            SrLogger.LogError($"Error teleporting player: {ex}", SrLogger.LogTarget.Both);
+        }
+    }
+
 
     public override void AfterGameContext(GameContext gameContext)
     {
