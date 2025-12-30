@@ -23,6 +23,14 @@ namespace SR2MP.Components.FX
         private void Start()
         {
             spawnAtTransform = transform.GetChild(2);
+            
+            // Null check for fxManager and footstepFX
+            if (fxManager == null || fxManager.footstepFX == null)
+            {
+                MelonLoader.MelonLogger.Warning("NetworkPlayerFootstep: FX Manager or footstepFX is null, skipping FX initialization");
+                return;
+            }
+            
             footstepFX = fxManager.footstepFX;
             
             footstepFXInstance = Instantiate(footstepFX, spawnAtTransform.position, spawnAtTransform.rotation);
@@ -33,6 +41,8 @@ namespace SR2MP.Components.FX
 
         public void UpdateFXState()
         {
+            if (footstepParticles == null) return;
+            
             if (playerGrounded && !playerInWater)
             {
                 footstepParticles.Play(true);
