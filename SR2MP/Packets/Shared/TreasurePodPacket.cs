@@ -23,6 +23,7 @@ namespace SR2MP.Packets.Shared
 
         public void Deserialise(PacketReader reader)
         {
+            reader.ReadByte(); // Skip the type byte that was written by Serialise
             Id = reader.ReadString();
         }
     }

@@ -24,6 +24,7 @@ public struct GadgetPacket : IPacket
 
     public void Deserialise(PacketReader reader)
     {
+        Type = reader.ReadByte(); // Read the type byte that was written by Serialise
         GadgetId = reader.ReadString();
         GadgetTypeId = reader.ReadInt();
         Position = reader.ReadVector3();

@@ -29,6 +29,7 @@ namespace SR2MP.Packets.Shared
 
         public void Deserialise(PacketReader reader)
         {
+            reader.ReadByte(); // Skip the type byte that was written by Serialise
             AreaId = reader.ReadString();
             Level = reader.ReadInt();
             IsTransition = reader.ReadBool();

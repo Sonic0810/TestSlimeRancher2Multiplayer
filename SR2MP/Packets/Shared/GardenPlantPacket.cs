@@ -29,6 +29,7 @@ namespace SR2MP.Packets.Shared
 
         public void Deserialise(PacketReader reader)
         {
+            reader.ReadByte(); // Skip the type byte that was written by Serialise
             PlotId = reader.ReadString();
             PlantTypeId = reader.ReadInt();
             SlotIndex = reader.ReadInt();

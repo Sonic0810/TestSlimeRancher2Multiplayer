@@ -28,6 +28,7 @@ namespace SR2MP.Packets.Shared
 
         public void Deserialise(PacketReader reader)
         {
+            reader.ReadByte(); // Skip the type byte that was written by Serialise
             int count = reader.ReadInt();
             Prices = new System.Collections.Generic.Dictionary<string, float>();
             for (int i = 0; i < count; i++)

@@ -20,6 +20,7 @@ public struct InitialGadgetsPacket : IPacket
 
     public void Deserialise(PacketReader reader)
     {
+        Type = reader.ReadByte(); // Read the type byte that was written by Serialise
         var count = reader.ReadInt();
         Gadgets = new List<GadgetPacket>(count);
         for (int i = 0; i < count; i++)
