@@ -43,7 +43,7 @@ internal static class BuildInfo
 {
     internal const string Name = "Slime Rancher 2 Multiplayer Mod";
     internal const string Description = "Adds Multiplayer to Slime Rancher 2";
-    internal const string Author = "Shark";
+    internal const string Author = "Shark, forked by Sonic0810";
     internal const string CoAuthors = "";
     internal const string Contributors = "AlchlcSystm, shizophrenicgopher, PinkTarr";
     internal const string Company = "";
