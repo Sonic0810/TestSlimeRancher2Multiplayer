@@ -79,3 +79,25 @@ public sealed class ConnectCommand : SR2ECommand
         return true;
     }
 }
+
+public sealed class DisconnectCommand : SR2ECommand
+{
+    public override string ID => "disconnect";
+    public override string Usage => "disconnect";
+
+    public override bool Execute(string[] args)
+    {
+        if (Main.Client.IsConnected)
+        {
+            Main.Client.Disconnect();
+            SrLogger.LogMessage("Disconnected from server.", SrLogger.LogTarget.Both);
+        }
+        else
+        {
+            // Force reset the connection state even if not "connected"
+            Main.Client.ForceReset();
+            SrLogger.LogMessage("Connection state reset.", SrLogger.LogTarget.Both);
+        }
+        return true;
+    }
+}

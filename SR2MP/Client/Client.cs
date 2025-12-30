@@ -227,6 +227,35 @@ public sealed class Client
         }
     }
 
+    /// <summary>
+    /// Force reset all connection state, even if not connected.
+    /// Use this when the connection gets into a broken state.
+    /// </summary>
+    public void ForceReset()
+    {
+        try
+        {
+            heartbeatTimer?.Dispose();
+            heartbeatTimer = null;
+
+            isConnected = false;
+            udpClient?.Close();
+            udpClient = null;
+
+            OwnPlayerId = string.Empty;
+            PendingJoin = null;
+            Main.IsLoadingMultiplayerSave = false;
+
+            GlobalVariables.playerManager.Clear();
+
+            SrLogger.LogMessage("Client state forcibly reset.", SrLogger.LogTarget.Both);
+        }
+        catch (Exception ex)
+        {
+            SrLogger.LogError($"Error during force reset: {ex}", SrLogger.LogTarget.Both);
+        }
+    }
+
     internal void NotifyConnected()
     {
         OnConnected?.Invoke(OwnPlayerId);
